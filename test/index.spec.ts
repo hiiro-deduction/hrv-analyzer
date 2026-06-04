@@ -1,29 +1,313 @@
-import {
-	env,
-	createExecutionContext,
-	waitOnExecutionContext,
-	SELF,
-} from "cloudflare:test";
-import { describe, it, expect } from "vitest";
-import worker from "../src/index";
+import { env, createExecutionContext } from "cloudflare:test";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import worker, { getMean, getMedian, getStandardDeviation, parseShortcutData } from "../src/index";
 
-// For now, you'll need to do something like this to get a correctly-typed
-// `Request` to pass to `worker.fetch()`.
-const IncomingRequest = Request<unknown, IncomingRequestCfProperties>;
+describe("Utils: getMean", () => {
+  it("空の配列を渡した場合、0を返す", () => {
+    // Arrange
+    const values: number[] = [];
+    // Act
+    const result = getMean(values);
+    // Assert
+    expect(result).toBe(0);
+  });
 
-describe("Hello World worker", () => {
-	it("responds with Hello World! (unit style)", async () => {
-		const request = new IncomingRequest("http://example.com");
-		// Create an empty context to pass to `worker.fetch()`.
-		const ctx = createExecutionContext();
-		const response = await worker.fetch(request, env, ctx);
-		// Wait for all `Promise`s passed to `ctx.waitUntil()` to settle before running test assertions
-		await waitOnExecutionContext(ctx);
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
-	});
+  it("正常な数値配列を渡した場合、正しい平均値を返す", () => {
+    // Arrange
+    const values = [10, 20, 30];
+    // Act
+    const result = getMean(values);
+    // Assert
+    expect(result).toBe(20);
+  });
+});
 
-	it("responds with Hello World! (integration style)", async () => {
-		const response = await SELF.fetch("https://example.com");
-		expect(await response.text()).toMatchInlineSnapshot(`"Hello World!"`);
-	});
+describe("Utils: getMedian", () => {
+  it("空の配列を渡した場合、0を返す", () => {
+    // Arrange
+    const values: number[] = [];
+    // Act
+    const result = getMedian(values);
+    // Assert
+    expect(result).toBe(0);
+  });
+
+  it("要素数が奇数の場合、中央の値を返す", () => {
+    // Arrange
+    const values = [10, 30, 20];
+    // Act
+    const result = getMedian(values);
+    // Assert
+    expect(result).toBe(20); // sortされるので10,20,30の中央
+  });
+
+  it("要素数が偶数の場合、中央2つの値の平均を返す", () => {
+    // Arrange
+    const values = [10, 40, 30, 20];
+    // Act
+    const result = getMedian(values);
+    // Assert
+    expect(result).toBe(25); // sortされるので10,20,30,40の中央
+  });
+});
+
+describe("Utils: getStandardDeviation", () => {
+  it("空の配列を渡した場合、0を返す", () => {
+    // Arrange
+    const values: number[] = [];
+    const mean = 0;
+    // Act
+    const result = getStandardDeviation(values, mean);
+    // Assert
+    expect(result).toBe(0);
+  });
+
+  it("正常な数値配列を渡した場合、正しい標準偏差を返す", () => {
+    // Arrange
+    const values = [10, 20, 30];
+    const mean = 20;
+    // Act
+    const result = getStandardDeviation(values, mean);
+    // Assert
+    // 分散 = ((10-20)^2 + (20-20)^2 + (30-20)^2)/3 = 200/3 = 66.666...
+    // 標準偏差 = sqrt(66.666...) ≈ 8.1649658
+    expect(result).toBeCloseTo(8.1649658, 5);
+  });
+});
+
+describe("Utils: parseShortcutData", () => {
+  it("空文字やundefinedが渡された場合、空配列を返す", () => {
+    expect(parseShortcutData()).toEqual([]);
+    expect(parseShortcutData("", "")).toEqual([]);
+  });
+
+  it("正常な改行区切りデータをパースしてオブジェクト配列を返す", () => {
+    const dates = "2026-06-01T00:00:00Z\n2026-06-01T01:00:00Z";
+    const values = "10\n20";
+    const result = parseShortcutData(dates, values);
+    expect(result).toHaveLength(2);
+    expect(result[0].start.getTime()).toBe(new Date("2026-06-01T00:00:00Z").getTime());
+    expect(result[0].value).toBe(10);
+    expect(result[1].value).toBe(20);
+  });
+
+  it("値に欠損（空行）が含まれる場合、0として処理される（フォールバック）", () => {
+    const dates = "2026-06-01T00:00:00Z\n2026-06-01T01:00:00Z";
+    const values = "10\n";
+    const result = parseShortcutData(dates, values);
+    expect(result).toHaveLength(2);
+    expect(result[0].value).toBe(10);
+    expect(result[1].value).toBe(0); // 未定義・空文字時は0
+  });
+
+  it("文字列（Awakeなど）が送られた場合、文字列としてパースされる", () => {
+    const dates = "2026-06-01T00:00:00Z";
+    const values = "Awake";
+    const result = parseShortcutData(dates, values);
+    expect(result[0].value).toBe("Awake");
+  });
+});
+
+describe("Worker API: POST /", () => {
+  beforeEach(() => {
+    // 時刻に依存する処理をモックし、常に同じ結果になるようにする (AAAの再現性担保)
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("POST以外のメソッドでリクエストした場合、405エラーを返す", async () => {
+    // Arrange
+    const request = new Request("http://example.com", { method: "GET" });
+    const ctx = createExecutionContext();
+    
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+    
+    // Assert
+    expect(response.status).toBe(405);
+    expect(await response.text()).toBe("Method Not Allowed");
+  });
+
+  it("不正なJSONフォーマットを送信した場合、400エラーを返す", async () => {
+    // Arrange
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: "invalid-json",
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+    
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+    
+    // Assert
+    expect(response.status).toBe(400);
+    const body = await response.json<any>();
+    expect(body.error).toBe("Invalid JSON format");
+  });
+
+  it("睡眠データが存在しない場合、400エラーを返す", async () => {
+    // Arrange
+    const payload = {
+      hrv: { hrv_dates: "2026-06-01T00:00:00Z", hrv_value: "30" },
+      rhr: { rhr_dates: "2026-06-01T00:00:00Z", rhr_value: "60" }
+      // sleepが未定義
+    };
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(400);
+    const body = await response.json<any>();
+    expect(body.error).toBe("No sleep data provided.");
+  });
+  
+  it("正常なヘルスケアデータを送信した場合、正しい統計値とプロンプトを返す", async () => {
+    // Arrange
+    // 今日のデータ (基準時刻 2026-06-04T12:00:00Z から24時間以内)
+    const todayStart = "2026-06-04T00:00:00Z";
+    const todayEnd = "2026-06-04T06:00:00Z";
+    
+    // 過去のデータ (基準時刻から24時間より前)
+    const pastStart = "2026-06-01T00:00:00Z";
+    const pastEnd = "2026-06-01T06:00:00Z";
+
+    const payload = {
+      hrv: {
+        hrv_dates: `${pastStart}\n${todayStart}`,
+        hrv_value: "30.0\n40.0"
+      },
+      rhr: {
+        rhr_dates: `${pastStart}\n${todayStart}`,
+        rhr_value: "60.0\n65.0"
+      },
+      sleep: {
+        sleep_start_dates: `${pastStart}\n${todayStart}`,
+        sleep_end_dates: `${pastEnd}\n${todayEnd}`,
+        sleep_value: "Core\nCore" // Awake以外なら睡眠としてカウントされる
+      }
+    };
+    
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(200);
+    const body = await response.json<any>();
+    
+    expect(body.metrics).toBeDefined();
+    // 過去のデータがベースラインになる
+    expect(body.metrics.hrv.baseline_median).toBe(30);
+    expect(body.metrics.rhr.baseline_mean).toBe(60);
+    expect(body.metrics.sleep.baseline_mean_hours).toBe(6); // 1日分のデータしかないため6時間となる
+
+    // 今日のデータが today になる
+    expect(body.metrics.hrv.today).toBe(40);
+    expect(body.metrics.rhr.today).toBe(65);
+    expect(body.metrics.sleep.today_hours).toBe(6);
+    
+    expect(body.prompt_context).toContain("【本日の体調データ】");
+    expect(body.prompt_context).toContain("睡眠時間: 6.0時間");
+  });
+
+  it("睡眠時間の前後5分以内のHRVデータは、バッファにより睡眠中として計算される", async () => {
+    // Arrange
+    // 睡眠は 01:00:00 ~ 06:00:00
+    const sleepStart = "2026-06-04T01:00:00Z";
+    const sleepEnd = "2026-06-04T06:00:00Z";
+    
+    // HRVは睡眠開始の「4分前」に計測されている（本来なら範囲外だが、5分バッファにより含まれるはず）
+    const hrvStart = "2026-06-04T00:56:00Z";
+
+    const payload = {
+      hrv: {
+        hrv_dates: hrvStart,
+        hrv_value: "50.0"
+      },
+      sleep: {
+        sleep_start_dates: sleepStart,
+        sleep_end_dates: sleepEnd,
+        sleep_value: "Core"
+      }
+    };
+    
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+    const body = await response.json<any>();
+    
+    // Assert
+    // HRVが正しく抽出され、todayの平均値として50が算出されているはず
+    expect(body.metrics.hrv.today).toBe(50);
+  });
+
+  it("今日のデータがまだ無い（同期されていない）場合、プロンプトで「データ同期中」と表示される", async () => {
+    // Arrange
+    // 過去のデータのみ存在し、今日のデータは無い状態
+    const pastStart = "2026-06-01T00:00:00Z";
+    const pastEnd = "2026-06-01T06:00:00Z";
+
+    const payload = {
+      hrv: {
+        hrv_dates: `${pastStart}`,
+        hrv_value: "30.0"
+      },
+      rhr: {
+        rhr_dates: `${pastStart}`,
+        rhr_value: "60.0"
+      },
+      sleep: {
+        sleep_start_dates: `${pastStart}`,
+        sleep_end_dates: `${pastEnd}`,
+        sleep_value: "Core"
+      }
+    };
+    
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(200);
+    const body = await response.json<any>();
+    
+    // データ未同期時は数値の0ではなく、APIとしてより適切な null を返すことを検証
+    expect(body.metrics.hrv.today).toBeNull();
+    expect(body.metrics.rhr.today).toBeNull();
+    expect(body.metrics.sleep.today_hours).toBeNull();
+    
+    expect(body.prompt_context).toContain("心拍変動(HRV): データ同期中");
+    expect(body.prompt_context).toContain("安静時心拍数(RHR): データ同期中");
+    expect(body.prompt_context).toContain("睡眠時間: データ同期中");
+  });
 });
