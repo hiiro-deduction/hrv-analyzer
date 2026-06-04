@@ -308,7 +308,7 @@ export class AnalysisError extends Error {
  * @returns Geminiの応答テキスト
  */
 export async function callGeminiAPI(promptContext: string, apiKey: string): Promise<string> {
-  const userPrompt = `${promptContext}\n\nこれを踏まえて、今日の過ごし方のアドバイスを150文字以内で優しく教えてください。`;
+  const userPrompt = `${promptContext}\n\nこれを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。`;
 
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: 'POST',
@@ -409,9 +409,12 @@ async function processNotificationInBackground(promptContext: string, env: Env):
   try {
     // Gemini APIでアドバイスを取得
     const advice = await callGeminiAPI(promptContext, env.GEMINI_API_KEY!);
+
+   // プロンプト用の指示文やシステム警告をカットして、綺麗なデータ部分だけを残す
+    const cleanData = promptContext.split('\n\n上記は私の今日のコンディションデータです。')[0];
     
     // Discord にプロンプトコンテキスト（体調データ）とアドバイスを送信
-    const discordMessage = `${promptContext}\n\n🤖 **AIアドバイス:**\n${advice}`;
+    const discordMessage = `${cleanData}\n\n**AIアドバイス:**\n${advice}`;
     await sendDiscordNotification(discordMessage, env.DISCORD_WEBHOOK_URL!);
     
     console.log('バックグラウンド処理完了: Gemini → Discord 通知成功');
