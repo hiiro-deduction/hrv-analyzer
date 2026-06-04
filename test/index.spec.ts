@@ -81,9 +81,9 @@ describe("Utils: parseShortcutData", () => {
     expect(parseShortcutData("", "")).toEqual([]);
   });
 
-  it("正常な改行区切りデータをパースしてオブジェクト配列を返す", () => {
-    const dates = "2026-06-01T00:00:00Z\n2026-06-01T01:00:00Z";
-    const values = "10\n20";
+  it("正常なカンマ区切りデータをパースしてオブジェクト配列を返す", () => {
+    const dates = "2026-06-01T00:00:00Z,2026-06-01T01:00:00Z";
+    const values = "10,20";
     const result = parseShortcutData(dates, values);
     expect(result).toHaveLength(2);
     expect(result[0].start.getTime()).toBe(new Date("2026-06-01T00:00:00Z").getTime());
@@ -91,9 +91,9 @@ describe("Utils: parseShortcutData", () => {
     expect(result[1].value).toBe(20);
   });
 
-  it("値に欠損（空行）が含まれる場合、0として処理される（フォールバック）", () => {
-    const dates = "2026-06-01T00:00:00Z\n2026-06-01T01:00:00Z";
-    const values = "10\n";
+  it("値に欠損（空行など）が含まれる場合、0として処理される（フォールバック）", () => {
+    const dates = "2026-06-01T00:00:00Z,2026-06-01T01:00:00Z";
+    const values = "10,";
     const result = parseShortcutData(dates, values);
     expect(result).toHaveLength(2);
     expect(result[0].value).toBe(10);
@@ -185,17 +185,17 @@ describe("Worker API: POST /", () => {
 
     const payload = {
       hrv: {
-        hrv_dates: `${pastStart}\n${todayStart}`,
-        hrv_value: "30.0\n40.0"
+        hrv_dates: `${pastStart},${todayStart}`,
+        hrv_value: "30.0,40.0"
       },
       rhr: {
-        rhr_dates: `${pastStart}\n${todayStart}`,
-        rhr_value: "60.0\n65.0"
+        rhr_dates: `${pastStart},${todayStart}`,
+        rhr_value: "60.0,65.0"
       },
       sleep: {
-        sleep_start_dates: `${pastStart}\n${todayStart}`,
-        sleep_end_dates: `${pastEnd}\n${todayEnd}`,
-        sleep_value: "Core\nCore" // Awake以外なら睡眠としてカウントされる
+        sleep_start_dates: `${pastStart},${todayStart}`,
+        sleep_end_dates: `${pastEnd},${todayEnd}`,
+        sleep_value: "Core,Core" // Awake以外なら睡眠としてカウントされる
       }
     };
     

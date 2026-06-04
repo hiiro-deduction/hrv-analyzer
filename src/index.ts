@@ -70,9 +70,9 @@ export interface ParsedHealthData {
 // ショートカットから送られてくる改行区切りの文字列をパースしてオブジェクトの配列にする関数
 export function parseShortcutData(dateStr?: string, valueStr?: string, endDateStr?: string): ParsedHealthData[] {
   if (!dateStr || !valueStr) return [];
-  const dates = dateStr.trim().split('\n');
-  const values = valueStr.trim().split('\n');
-  const endDates = endDateStr ? endDateStr.trim().split('\n') : null;
+  const dates = dateStr.trim().split(',');
+  const values = valueStr.trim().split(',');
+  const endDates = endDateStr ? endDateStr.trim().split(',') : null;
 
   return dates.map((date, index) => {
     let parsedValue: number | string = 0; // デフォルト値（欠損対策）
