@@ -308,7 +308,8 @@ export class AnalysisError extends Error {
  * @returns Geminiの応答テキスト
  */
 export async function callGeminiAPI(promptContext: string, apiKey: string): Promise<string> {
-  const userPrompt = `${promptContext}\n\nこれを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。`;
+  const userPrompt = `${promptContext}\n\nこれを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。
+  冒頭は「おはようございます」など挨拶から始めるてください。`;
 
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: 'POST',
