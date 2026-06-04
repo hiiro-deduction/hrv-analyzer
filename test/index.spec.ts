@@ -1,6 +1,6 @@
 import { env, createExecutionContext } from "cloudflare:test";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import worker, { getMean, getMedian, getStandardDeviation, parseShortcutData } from "../src/index";
+import worker, { getMean, getMedian, getStandardDeviation, parseShortcutData, analyzeHealthData, AnalysisError } from "../src/index";
 
 describe("Utils: getMean", () => {
   it("空の配列を渡した場合、0を返す", () => {
@@ -402,5 +402,237 @@ describe("Worker API: POST /", () => {
     // 睡眠時間に関する記述を検証
     expect(body.prompt_context).toContain("非常に短い（危険）");
     expect(body.prompt_context).toContain("※【システム警告】本日の睡眠時間が3時間未満の危険域です");
+  });
+
+  it("存在しないパスにPOSTした場合、404を返す", async () => {
+    // Arrange
+    const request = new Request("http://example.com/unknown", {
+      method: "POST",
+      body: JSON.stringify({}),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(404);
+    expect(await response.text()).toBe("Not Found");
+  });
+});
+
+describe("Worker API: POST /notify", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // テスト用の正常なペイロード
+  const validPayload = {
+    hrv: { hrv_dates: "2026-06-01T00:00:00Z,2026-06-04T00:00:00Z", hrv_value: "30.0,40.0" },
+    rhr: { rhr_dates: "2026-06-01T00:00:00Z,2026-06-04T00:00:00Z", rhr_value: "60.0,65.0" },
+    sleep: {
+      sleep_start_dates: "2026-06-01T00:00:00Z,2026-06-04T00:00:00Z",
+      sleep_end_dates: "2026-06-01T06:00:00Z,2026-06-04T06:00:00Z",
+      sleep_value: "Core,Core"
+    }
+  };
+
+  it("Authorizationヘッダーがない場合、401を返す", async () => {
+    // Arrange
+    const testEnv = { ...env, API_SECRET_TOKEN: "test-token", GEMINI_API_KEY: "test-key", DISCORD_WEBHOOK_URL: "https://example.com/webhook" };
+    const request = new Request("http://example.com/notify", {
+      method: "POST",
+      body: JSON.stringify(validPayload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, testEnv, ctx);
+
+    // Assert
+    expect(response.status).toBe(401);
+    const body = await response.json<any>();
+    expect(body.error).toBe("Unauthorized");
+  });
+
+  it("不正なトークンを送信した場合、401を返す", async () => {
+    // Arrange
+    const testEnv = { ...env, API_SECRET_TOKEN: "correct-token", GEMINI_API_KEY: "test-key", DISCORD_WEBHOOK_URL: "https://example.com/webhook" };
+    const request = new Request("http://example.com/notify", {
+      method: "POST",
+      body: JSON.stringify(validPayload),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer wrong-token"
+      }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, testEnv, ctx);
+
+    // Assert
+    expect(response.status).toBe(401);
+    const body = await response.json<any>();
+    expect(body.error).toBe("Unauthorized");
+  });
+
+  it("正しいトークンで有効なデータを送信した場合、202 Acceptedを返す", async () => {
+    // Arrange
+    const testEnv = { ...env, API_SECRET_TOKEN: "test-token", GEMINI_API_KEY: "test-key", DISCORD_WEBHOOK_URL: "https://example.com/webhook" };
+    const request = new Request("http://example.com/notify", {
+      method: "POST",
+      body: JSON.stringify(validPayload),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-token"
+      }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, testEnv, ctx);
+
+    // Assert
+    expect(response.status).toBe(202);
+    const body = await response.json<any>();
+    expect(body.status).toBe("accepted");
+    expect(body.message).toContain("データを受け取りました");
+  });
+
+  it("シークレットが未設定の場合、503を返す", async () => {
+    // Arrange
+    // env にシークレットが含まれていない状態を再現（.dev.varsから読み込まれる値を明示的に除去）
+    const emptyEnv = { ...env, API_SECRET_TOKEN: undefined, GEMINI_API_KEY: undefined, DISCORD_WEBHOOK_URL: undefined };
+    const request = new Request("http://example.com/notify", {
+      method: "POST",
+      body: JSON.stringify(validPayload),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer some-token"
+      }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, emptyEnv, ctx);
+
+    // Assert
+    expect(response.status).toBe(503);
+    const body = await response.json<any>();
+    expect(body.error).toBe("Service not configured");
+  });
+
+  it("GET /notify でリクエストした場合、405を返す", async () => {
+    // Arrange
+    const request = new Request("http://example.com/notify", { method: "GET" });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(405);
+  });
+
+  it("正しいトークンだが不正なJSONを送信した場合、400を返す", async () => {
+    // Arrange
+    const testEnv = { ...env, API_SECRET_TOKEN: "test-token", GEMINI_API_KEY: "test-key", DISCORD_WEBHOOK_URL: "https://example.com/webhook" };
+    const request = new Request("http://example.com/notify", {
+      method: "POST",
+      body: "not-json",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-token"
+      }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, testEnv, ctx);
+
+    // Assert
+    expect(response.status).toBe(400);
+    const body = await response.json<any>();
+    expect(body.error).toBe("Invalid JSON format");
+  });
+
+  it("正しいトークンだが睡眠データがない場合、400を返す", async () => {
+    // Arrange
+    const testEnv = { ...env, API_SECRET_TOKEN: "test-token", GEMINI_API_KEY: "test-key", DISCORD_WEBHOOK_URL: "https://example.com/webhook" };
+    const payload = {
+      hrv: { hrv_dates: "2026-06-01T00:00:00Z", hrv_value: "30" },
+      rhr: { rhr_dates: "2026-06-01T00:00:00Z", rhr_value: "60" }
+    };
+    const request = new Request("http://example.com/notify", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer test-token"
+      }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, testEnv, ctx);
+
+    // Assert
+    expect(response.status).toBe(400);
+    const body = await response.json<any>();
+    expect(body.error).toBe("No sleep data provided.");
+  });
+});
+
+describe("analyzeHealthData", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-04T12:00:00Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("睡眠データが空の場合、AnalysisErrorをスローする", () => {
+    // Arrange
+    const data = {
+      hrv: { hrv_dates: "2026-06-01T00:00:00Z", hrv_value: "30" }
+    };
+
+    // Act & Assert
+    expect(() => analyzeHealthData(data)).toThrow(AnalysisError);
+    expect(() => analyzeHealthData(data)).toThrow("No sleep data provided.");
+  });
+
+  it("正常なデータで分析結果が正しい構造を持つ", () => {
+    // Arrange
+    const data = {
+      hrv: { hrv_dates: "2026-06-01T00:00:00Z,2026-06-04T00:00:00Z", hrv_value: "30.0,40.0" },
+      rhr: { rhr_dates: "2026-06-01T00:00:00Z,2026-06-04T00:00:00Z", rhr_value: "60.0,65.0" },
+      sleep: {
+        sleep_start_dates: "2026-06-01T00:00:00Z,2026-06-04T00:00:00Z",
+        sleep_end_dates: "2026-06-01T06:00:00Z,2026-06-04T06:00:00Z",
+        sleep_value: "Core,Core"
+      }
+    };
+
+    // Act
+    const result = analyzeHealthData(data);
+
+    // Assert
+    expect(result).toHaveProperty('metrics');
+    expect(result).toHaveProperty('prompt_context');
+    expect(result.metrics.hrv).toHaveProperty('baseline_median');
+    expect(result.metrics.hrv).toHaveProperty('baseline_stddev');
+    expect(result.metrics.hrv).toHaveProperty('today');
+    expect(result.prompt_context).toContain("【本日の体調データ】");
   });
 });

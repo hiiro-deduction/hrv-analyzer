@@ -6,14 +6,17 @@ iPhoneのヘルスケアアプリ（Apple Watch）で取得した **睡眠中の
 
 Apple Watch が毎日記録するバイタルデータを、iOS ショートカットアプリ経由で本 API に送信すると、過去1ヶ月分のデータに基づく統計処理（中央値・平均値・標準偏差）を行い、**今日のコンディション評価**と**LLM 向けプロンプト**を返却します。
 
+さらに、`/notify` エンドポイントを使用すると、サーバーサイドで Gemini API によるアドバイス生成と Discord Webhook への通知を非同期で自動実行できます。
+
 ### システム構成
 
 ```mermaid
 flowchart LR
     A["🍎 Apple Watch\nHealthKit"] -->|バイタルデータ| B["📱 iOS ショートカット\n（起床時自動実行）"]
     B -->|POST JSON| C["⚡ Cloudflare Workers\n（本リポジトリ）"]
-    C -->|JSON レスポンス\nmetrics + prompt| D["🤖 ChatGPT アプリ\nor LLM API"]
-    D -->|体調アドバイス| E["🔔 ユーザーへ通知"]
+    C -->|即座にレスポンス| B
+    C -->|バックグラウンド処理| D["🤖 Gemini API\n（アドバイス生成）"]
+    D -->|AIアドバイス| E["💬 Discord Webhook\n（通知）"]
 ```
 
 ## 技術スタック
@@ -22,21 +25,31 @@ flowchart LR
 |---------|------|------|
 | データ取得 | iOS ショートカット + HealthKit | 起床時オートメーションで自動実行 |
 | 統計計算 | Cloudflare Workers (TypeScript) | 月10万リクエスト無料、ゼロコールドスタート |
-| AI テキスト生成 | ChatGPT iOS アプリ / Gemini API 等 | プロンプトを含むレスポンスを利用 |
+| AI テキスト生成 | Gemini API (`gemini-2.5-flash-preview-05-20`) | サーバーサイドで自動実行 |
+| 通知 | Discord Webhook | バックグラウンドで非同期通知 |
 | テスト | Vitest + @cloudflare/vitest-pool-workers | Workers ランタイム上でのテスト |
 
 ## API 仕様
 
-### エンドポイント
+### エンドポイント一覧
+
+| エンドポイント | 認証 | 説明 |
+|---------------|------|------|
+| `POST /` | 不要 | データ分析のみ（JSON レスポンス） |
+| `POST /notify` | 必要 | データ分析 + Gemini → Discord 非同期通知 |
+
+※ POST 以外のメソッドは `405 Method Not Allowed` を返します。
+
+---
+
+### `POST /` — データ分析エンドポイント
 
 ```
 POST /
 Content-Type: application/json
 ```
 
-※ POST 以外のメソッドは `405 Method Not Allowed` を返します。
-
-### リクエストボディ
+#### リクエストボディ
 
 iOSショートカットから、カンマ区切りのテキストデータを含むJSONが送信されます。
 
@@ -78,43 +91,72 @@ hrv_value の例:
 | | `hrv_value` | HRV 値（ms） |
 | **睡眠** | `sleep_start_dates` | 睡眠開始日時 |
 | | `sleep_end_dates` | 睡眠終了日時 |
-| | `sleep_value` | 睡眠時間（時間） |
+| | `sleep_value` | 睡眠ステージ（Core, Deep, REM, Asleep, InBed, Awake） |
 | **RHR（安静時心拍数）** | `rhr_dates` | 計測日時 |
 | | `rhr_value` | 安静時心拍数（bpm） |
 
-### レスポンス
+#### レスポンス
 
 統計処理の結果と、LLM に渡すためのプロンプトコンテキストを含む JSON を返します。
 
 ```json
 {
   "metrics": {
-    "hrv_today": 31.2,
-    "rhr_today": 72.0,
-    "sleep_today": 5.5
+    "hrv": { "baseline_median": 39.6, "baseline_stddev": 21.7, "today": 31.2 },
+    "rhr": { "baseline_mean": 65.4, "today": 72.0 },
+    "sleep": { "baseline_mean_hours": 7.2, "today_hours": 5.5 }
   },
-  "prompt_context": "【本日の体調データ】\n・心拍変動(HRV): 31.2 (平常時中央値39.6±21.7より低め)\n・安静時心拍数(RHR): 72.0 (平常時平均65.4より高め)\n・睡眠時間: 5.5時間 (平常時7.2時間より短い)\n\n上記は私の今日のコンディションデータです。これを踏まえて、今日の過ごし方のアドバイスを150文字以内で優しく教えてください。"
+  "prompt_context": "【本日の体調データ】\n・心拍変動(HRV): 31.2 (平常時中央値39.6±21.7より低め)\n..."
 }
 ```
 
-#### `metrics` フィールド
+---
 
-| キー | 説明 |
-|------|------|
-| `hrv_today` | 今日の睡眠中 HRV 平均値（ms） |
-| `rhr_today` | 今日の睡眠中安静時心拍数の平均値（bpm） |
-| `sleep_today` | 今日の睡眠時間（時間） |
+### `POST /notify` — 非同期通知エンドポイント
 
-#### `prompt_context` フィールド
+```
+POST /notify
+Content-Type: application/json
+Authorization: Bearer <API_SECRET_TOKEN>
+```
 
-各指標を平常時の基準値と比較した評価テキストを含みます。iOS ショートカットから ChatGPT アプリやLLM API に直接渡すことで、パーソナライズされた体調アドバイスを生成できます。
+iOSショートカットからヘルスケアデータを受け取り、**即座にレスポンスを返却**した後、バックグラウンドで以下の処理を実行します：
 
-### エラーレスポンス
+1. ヘルスケアデータの統計分析
+2. Gemini API でパーソナライズされた体調アドバイスを生成
+3. Discord Webhook でアドバイスを通知
+
+#### リクエストボディ
+
+`POST /` と同じ形式のJSONを送信します。
+
+#### レスポンス（即座に返却）
+
+```json
+{
+  "status": "accepted",
+  "message": "データを受け取りました！バックグラウンドで処理中です。"
+}
+```
+
+ステータスコード: `202 Accepted`
+
+#### エラーレスポンス
+
+| ステータスコード | 条件 |
+|----------------|------|
+| `401 Unauthorized` | 認証トークンが無い or 不正 |
+| `400 Bad Request` | JSON パースエラー or 睡眠データなし |
+| `503 Service Unavailable` | シークレットが未設定 |
+
+---
+
+### 共通エラーレスポンス
 
 | ステータスコード | 条件 |
 |----------------|------|
 | `405 Method Not Allowed` | POST 以外のメソッド |
-| `400 Bad Request` | JSON パースエラー |
+| `404 Not Found` | 存在しないパス |
 
 ## 統計処理アルゴリズム
 
@@ -153,6 +195,28 @@ hrv_value の例:
 
 ```bash
 npm install
+```
+
+### 環境変数（シークレット）の設定
+
+`/notify` エンドポイントを使用するには、以下のシークレットの設定が必要です。
+
+#### ローカル開発
+
+プロジェクトルートに `.dev.vars` ファイルを作成し、以下の内容を記載します：
+
+```
+GEMINI_API_KEY=your-gemini-api-key
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxxxx/xxxxx
+API_SECRET_TOKEN=your-secret-token
+```
+
+#### 本番環境（Cloudflare Workers）
+
+```bash
+npx wrangler secret put GEMINI_API_KEY
+npx wrangler secret put DISCORD_WEBHOOK_URL
+npx wrangler secret put API_SECRET_TOKEN
 ```
 
 ### ローカル開発
