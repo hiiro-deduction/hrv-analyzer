@@ -106,6 +106,25 @@ describe("Utils: parseShortcutData", () => {
     const result = parseShortcutData(dates, values);
     expect(result[0].value).toBe("Awake");
   });
+
+  it("日付文字列に前後の空白が含まれていても正しくタイムゾーンが判定される", () => {
+    const dates = " 2026-06-01T00:00:00+09:00 , 2026-06-01T01:00:00Z ";
+    const values = "10,20";
+    const result = parseShortcutData(dates, values);
+    expect(result).toHaveLength(2);
+    expect(result[0].start.getTime()).toBe(new Date("2026-06-01T00:00:00+09:00").getTime());
+    expect(result[1].start.getTime()).toBe(new Date("2026-06-01T01:00:00Z").getTime());
+  });
+
+  it("タイムゾーン情報がない場合、日本時間(JST)として補完される", () => {
+    const dates = "2026-06-01T00:00:00,2026-06-01T01:00:00";
+    const values = "10,20";
+    const result = parseShortcutData(dates, values);
+    expect(result).toHaveLength(2);
+    // タイムゾーンがない場合は +09:00 として計算されるため、UTCに直すと前日の15時/16時になる
+    expect(result[0].start.getTime()).toBe(new Date("2026-05-31T15:00:00Z").getTime());
+    expect(result[1].start.getTime()).toBe(new Date("2026-05-31T16:00:00Z").getTime());
+  });
 });
 
 describe("Worker API: POST /", () => {
@@ -228,6 +247,42 @@ describe("Worker API: POST /", () => {
     expect(body.prompt_context).toContain("睡眠時間: 6.0時間");
   });
 
+  it("InBed や Awake などの睡眠ステージ以外のデータが送られた場合、実質的な睡眠時間から除外される", async () => {
+    // Arrange
+    const pastStart1 = "2026-06-01T00:00:00Z";
+    const pastEnd1 = "2026-06-01T02:00:00Z";
+    const pastStart2 = "2026-06-01T02:00:00Z";
+    const pastEnd2 = "2026-06-01T07:00:00Z";
+    const pastStart3 = "2026-06-01T07:00:00Z";
+    const pastEnd3 = "2026-06-01T08:00:00Z";
+
+    const payload = {
+      hrv: { hrv_dates: "2026-06-01T01:00:00Z", hrv_value: "30.0" },
+      rhr: { rhr_dates: "2026-06-01T01:00:00Z", rhr_value: "60.0" },
+      sleep: {
+        sleep_start_dates: `${pastStart1},${pastStart2},${pastStart3}`,
+        sleep_end_dates: `${pastEnd1},${pastEnd2},${pastEnd3}`,
+        sleep_value: "Core,InBed,Awake" // InBed (5時間) と Awake (1時間) は除外され、Core (2時間) だけが実質的な睡眠として計算されるはず
+      }
+    };
+    
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(200);
+    const body = await response.json<any>();
+    
+    expect(body.metrics.sleep.baseline_mean_hours).toBe(2); // 2 + 5 ではなく 2 になる
+  });
+
   it("睡眠時間の前後5分以内のHRVデータは、バッファにより睡眠中として計算される", async () => {
     // Arrange
     // 睡眠は 01:00:00 ~ 06:00:00
@@ -309,5 +364,43 @@ describe("Worker API: POST /", () => {
     expect(body.prompt_context).toContain("心拍変動(HRV): データ同期中");
     expect(body.prompt_context).toContain("安静時心拍数(RHR): データ同期中");
     expect(body.prompt_context).toContain("睡眠時間: データ同期中");
+  });
+
+  it("睡眠時間が3時間未満の場合、非常に短いと判定されシステム警告がプロンプトに追加される", async () => {
+    // Arrange
+    const pastStart = "2026-06-01T00:00:00Z";
+    const pastEnd = "2026-06-01T06:00:00Z"; // 過去は6時間睡眠
+    
+    const todayStart = "2026-06-04T00:00:00Z";
+    const todayEnd = "2026-06-04T02:00:00Z"; // 今日は2時間睡眠 (3時間未満)
+
+    const payload = {
+      hrv: { hrv_dates: `${pastStart},${todayStart}`, hrv_value: "30.0,40.0" },
+      rhr: { rhr_dates: `${pastStart},${todayStart}`, rhr_value: "60.0,65.0" },
+      sleep: {
+        sleep_start_dates: `${pastStart},${todayStart}`,
+        sleep_end_dates: `${pastEnd},${todayEnd}`,
+        sleep_value: "Core,Core"
+      }
+    };
+    
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+
+    // Assert
+    expect(response.status).toBe(200);
+    const body = await response.json<any>();
+    
+    expect(body.metrics.sleep.today_hours).toBe(2);
+    // 睡眠時間に関する記述を検証
+    expect(body.prompt_context).toContain("非常に短い（危険）");
+    expect(body.prompt_context).toContain("※【システム警告】本日の睡眠時間が3時間未満の危険域です");
   });
 });

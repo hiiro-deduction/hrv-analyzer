@@ -17,8 +17,10 @@ export interface HealthDataPayload {
   };
 }
 
-// --- ユーティリティ関数 ---
+// --- 定数 ---
+const VALID_SLEEP_STAGES = new Set(['core', 'deep', 'rem', 'asleep']);
 
+// --- ユーティリティ関数 ---
 /**
  * 平均値を計算する関数
  * @param values 計算対象の数値配列
@@ -67,6 +69,20 @@ export interface ParsedHealthData {
   value: number | string;
 }
 
+/**
+ * 日付文字列をパースし、タイムゾーン指定がない場合は日本時間(JST, +09:00)として扱う
+ * iPhoneから送信されるデータにはタイムゾーン情報が含まれないための対策
+ * @param dateStr 日付文字列 (例: "2026-06-04T00:00:28")
+ * @returns Dateオブジェクト
+ */
+function parseDateWithJSTFallback(dateStr: string): Date {
+  const cleanStr = dateStr.trim();
+  if (!cleanStr) return new Date(NaN);
+
+  const hasTimezone = cleanStr.endsWith('Z') || /[+-]\d{2}:?\d{2}$/.test(cleanStr);
+  return new Date(hasTimezone ? cleanStr : `${cleanStr}+09:00`);
+}
+
 // ショートカットから送られてくる改行区切りの文字列をパースしてオブジェクトの配列にする関数
 export function parseShortcutData(dateStr?: string, valueStr?: string, endDateStr?: string): ParsedHealthData[] {
   if (!dateStr || !valueStr) return [];
@@ -82,11 +98,12 @@ export function parseShortcutData(dateStr?: string, valueStr?: string, endDateSt
     }
 
     const obj: ParsedHealthData = {
-      start: new Date(date),
+      // iPhoneからのデータには時差情報がないため、タイムゾーンを補完してパースする
+      start: parseDateWithJSTFallback(date),
       value: parsedValue
     };
     if (endDates && endDates[index]) {
-      obj.end = new Date(endDates[index]);
+      obj.end = parseDateWithJSTFallback(endDates[index]);
     }
     return obj;
   }).filter(item => !isNaN(item.start.getTime())); // 無効な日付データ(空行など)を除外
@@ -115,9 +132,9 @@ export default {
         return Response.json({ error: "No sleep data provided." }, { status: 400 });
       }
 
-      // 2. 睡眠時間の特定と「Awake(覚醒)」の除外
-      // Apple Healthの睡眠ステージのうち、「Awake」以外を実質的な睡眠とみなす
-      const actualSleepPeriods = sleepData.filter(s => typeof s.value === 'string' && s.value.toLowerCase() !== 'awake');
+      // 2. 睡眠時間の特定
+      // Apple Healthの睡眠ステージのうち、InBed(就寝中)やAwake(覚醒)を除外し、明確に寝ているステージのみを抽出する
+      const actualSleepPeriods = sleepData.filter(s => typeof s.value === 'string' && VALID_SLEEP_STAGES.has(s.value.toLowerCase()));
 
       // 3. 睡眠中のHRVとRHRのみを抽出する関数（計測タイミングのズレを考慮して前後5分のバッファを持たせる）
       const BUFFER_MS = 5 * 60 * 1000; // 5分
@@ -213,7 +230,9 @@ export default {
       
       let sleepStatus = "標準的";
       if (sleepTodayTotalHours !== null) {
-        if (sleepTodayTotalHours < metrics.sleep.baseline_mean_hours - 1) {
+        if (sleepTodayTotalHours < 3) {
+          sleepStatus = "非常に短い（危険）";
+        } else if (sleepTodayTotalHours < metrics.sleep.baseline_mean_hours - 1) {
           sleepStatus = "短い";
         }
       }
@@ -231,13 +250,18 @@ export default {
         ? "データ同期中"
         : `${sleepTodayTotalHours.toFixed(1)}時間 (平常時${metrics.sleep.baseline_mean_hours.toFixed(1)}時間より${sleepStatus})`;
 
+      // 警告メッセージの生成（睡眠が3時間未満の場合）
+      const warningMessage = sleepTodayTotalHours !== null && sleepTodayTotalHours < 3
+        ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。ポジティブな評価は絶対に避けてください。"
+        : "";
+
       // プロンプト用のフォーマットで文字列を組み立てる
       const promptContext = `【本日の体調データ】
 ・心拍変動(HRV): ${formatHrv}
 ・安静時心拍数(RHR): ${formatRhr}
 ・睡眠時間: ${formatSleep}
 
-上記は私の今日のコンディションデータです。`;
+上記は私の今日のコンディションデータです。${warningMessage}`;
 
       // 7. 計算結果とテキストの両方をJSONで返す
       return Response.json({ 
