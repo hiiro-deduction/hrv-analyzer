@@ -46,7 +46,7 @@ export interface AnalysisResult {
 const VALID_SLEEP_STAGES = new Set(['core', 'deep', 'rem', 'asleep']);
 
 // Gemini APIのエンドポイント
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
 // --- ユーティリティ関数 ---
 /**
