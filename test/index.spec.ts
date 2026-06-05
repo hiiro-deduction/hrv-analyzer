@@ -320,6 +320,49 @@ describe("Worker API: POST /", () => {
     expect(body.metrics.hrv.today).toBe(50);
   });
 
+  it("RHRは睡眠中かどうかにかかわらず1日1回のサマリーデータとして計算される", async () => {
+    // Arrange
+    // 睡眠は 01:00:00 ~ 06:00:00
+    const sleepStart = "2026-06-04T01:00:00Z";
+    const sleepEnd = "2026-06-04T06:00:00Z";
+    
+    // HRVとRHRは睡眠時間外の 12:00:00 に計測されている
+    const measureTime = "2026-06-04T12:00:00Z";
+
+    const payload = {
+      hrv: {
+        hrv_dates: measureTime,
+        hrv_value: "50.0"
+      },
+      rhr: {
+        rhr_dates: measureTime,
+        rhr_value: "65.0"
+      },
+      sleep: {
+        sleep_start_dates: sleepStart,
+        sleep_end_dates: sleepEnd,
+        sleep_value: "Core"
+      }
+    };
+    
+    const request = new Request("http://example.com", {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    const ctx = createExecutionContext();
+
+    // Act
+    const response = await worker.fetch(request, env, ctx);
+    const body = await response.json<any>();
+    
+    // Assert
+    // 睡眠時間外のため、HRVは含まれない（todayはnullになる）
+    expect(body.metrics.hrv.today).toBeNull();
+    // RHRは睡眠時間外でも含まれる
+    expect(body.metrics.rhr.today).toBe(65);
+  });
+
   it("今日のデータがまだ無い（同期されていない）場合、プロンプトで「データ同期中」と表示される", async () => {
     // Arrange
     // 過去のデータのみ存在し、今日のデータは無い状態

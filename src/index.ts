@@ -172,6 +172,7 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
   // 4. ベースライン（過去）と今日（直近24時間）のデータを分割する
   const now = new Date();
   const oneDayAgo = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+  const twoDaysAgo = new Date(now.getTime() - (48 * 60 * 60 * 1000));
 
   // HRVの分割と抽出（睡眠中のみ）
   const hrvBaseline = hrvData
@@ -181,12 +182,13 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
     .filter(item => item.start >= oneDayAgo && isDuringSleep(item.start))
     .map(item => Number(item.value));
   
-  // RHRの分割と抽出（睡眠中のみ）
+  // RHRの分割と抽出（1日1回のサマリーデータのため睡眠フィルターを除外）
+  // RHRは最新のデータが「昨日のデータ」になることがあるため、直近48時間を最新データとして扱う
   const rhrBaseline = rhrData
-    .filter(item => item.start < oneDayAgo && isDuringSleep(item.start))
+    .filter(item => item.start < twoDaysAgo)
     .map(item => Number(item.value));
-  const rhrToday = rhrData
-    .filter(item => item.start >= oneDayAgo && isDuringSleep(item.start))
+  const rhrRecent = rhrData
+    .filter(item => item.start >= twoDaysAgo)
     .map(item => Number(item.value));
 
   // 睡眠時間の計算（1日あたりの平均時間と、今日の合計時間）
@@ -206,12 +208,12 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
 
 
   const isHrvMissing = hrvToday.length === 0;
-  const isRhrMissing = rhrToday.length === 0;
+  const isRhrMissing = rhrRecent.length === 0;
   const isSleepMissing = sleepTodayPeriods.length === 0;
 
   // 今日のデータが存在しない場合はnullを返すようにし、AIやクライアントが誤って0として扱わないようにする
   const hrvTodayMean = isHrvMissing ? null : getMean(hrvToday);
-  const rhrTodayMean = isRhrMissing ? null : getMean(rhrToday);
+  const rhrTodayMean = isRhrMissing ? null : getMean(rhrRecent);
   const sleepTodayTotalHours = isSleepMissing ? null : sleepTodayTotal;
 
   // 5. 最終的な統計メトリクスの計算
