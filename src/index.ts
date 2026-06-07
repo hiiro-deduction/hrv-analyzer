@@ -37,6 +37,7 @@ export interface AnalysisResult {
     sleep: {
       baseline_mean_hours: number;
       today_hours: number | null;
+      today_deep_percentage: number | null;
     };
   };
   prompt_context: string;
@@ -137,6 +138,15 @@ export function parseShortcutData(dateStr?: string, valueStr?: string, endDateSt
   }).filter(item => !isNaN(item.start.getTime())); // 無効な日付データ(空行など)を除外
 }
 
+/**
+ * ParsedHealthDataの配列から合計期間（時間単位）を算出する
+ * @param periods 計算対象の期間データの配列
+ * @returns 合計時間（時間）
+ */
+export function calculateTotalHours(periods: ParsedHealthData[]): number {
+  return periods.reduce((acc, s) => acc + (s.end ? (s.end.getTime() - s.start.getTime()) / (1000 * 60 * 60) : 0), 0);
+}
+
 // --- データ分析ロジック ---
 /**
  * ヘルスケアデータの統計分析を行う
@@ -193,7 +203,7 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
 
   // 睡眠時間の計算（1日あたりの平均時間と、今日の合計時間）
   const baselineSleepPeriods = actualSleepPeriods.filter(item => item.start < oneDayAgo);
-  const baselineSleepHoursTotal = baselineSleepPeriods.reduce((acc, s) => acc + (s.end ? (s.end.getTime() - s.start.getTime()) / (1000 * 60 * 60) : 0), 0);
+  const baselineSleepHoursTotal = calculateTotalHours(baselineSleepPeriods);
   
   // 睡眠記録が存在する実日数を計算（夜をまたぐ睡眠を同一日として扱うため、12時間シフトして日付を判定）
   const uniqueSleepDays = new Set(baselineSleepPeriods.map(s => {
@@ -204,7 +214,9 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
   const sleepBaselineMean = baselineSleepHoursTotal / sleepDaysCount;
 
   const sleepTodayPeriods = actualSleepPeriods.filter(item => item.start >= oneDayAgo);
-  const sleepTodayTotal = sleepTodayPeriods.reduce((acc, s) => acc + (s.end ? (s.end.getTime() - s.start.getTime()) / (1000 * 60 * 60) : 0), 0);
+  const sleepTodayTotal = calculateTotalHours(sleepTodayPeriods);
+  const sleepTodayDeepPeriods = sleepTodayPeriods.filter(item => typeof item.value === 'string' && item.value.toLowerCase() === 'deep');
+  const sleepTodayDeepTotal = calculateTotalHours(sleepTodayDeepPeriods);
 
 
   const isHrvMissing = hrvToday.length === 0;
@@ -215,6 +227,7 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
   const hrvTodayMean = isHrvMissing ? null : getMean(hrvToday);
   const rhrTodayMean = isRhrMissing ? null : getMean(rhrRecent);
   const sleepTodayTotalHours = isSleepMissing ? null : sleepTodayTotal;
+  const sleepTodayDeepPercentage = (isSleepMissing || sleepTodayTotal === 0) ? null : (sleepTodayDeepTotal / sleepTodayTotal) * 100;
 
   // 5. 最終的な統計メトリクスの計算
   const metrics = {
@@ -229,7 +242,8 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
     },
     sleep: {
       baseline_mean_hours: sleepBaselineMean,
-      today_hours: sleepTodayTotalHours
+      today_hours: sleepTodayTotalHours,
+      today_deep_percentage: sleepTodayDeepPercentage
     }
   };
 
@@ -274,9 +288,17 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
     ? "データ同期中"
     : `${sleepTodayTotalHours.toFixed(1)}時間 (平常時${metrics.sleep.baseline_mean_hours.toFixed(1)}時間より${sleepStatus})`;
 
-  // 警告メッセージの生成（睡眠が3時間未満の場合）
+  const formatDeepSleep = sleepTodayDeepPercentage === null
+    ? "データ同期中"
+    : `${sleepTodayDeepPercentage.toFixed(1)}%`;
+
+  // 各種システム警告メッセージの生成
   const warningMessage = sleepTodayTotalHours !== null && sleepTodayTotalHours < 3
     ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。ポジティブな評価は絶対に避けてください。"
+    : "";
+
+  const deepSleepWarning = sleepTodayDeepPercentage !== null && sleepTodayDeepPercentage < 15
+    ? "\n\n※【システム警告】本日の深い睡眠の割合が15%を下回っています。睡眠の質が低下している可能性があるため、改善のためのアドバイスを含めてください。"
     : "";
 
   // プロンプト用のフォーマットで文字列を組み立てる
@@ -284,8 +306,9 @@ export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
 ・心拍変動(HRV): ${formatHrv}
 ・安静時心拍数(RHR): ${formatRhr}
 ・睡眠時間: ${formatSleep}
+・深い睡眠の割合: ${formatDeepSleep}
 
-上記は私の今日のコンディションデータです。${warningMessage}`;
+上記は私の今日のコンディションデータです。${warningMessage}${deepSleepWarning}`;
 
   return { metrics, prompt_context: promptContext };
 }
