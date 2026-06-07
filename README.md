@@ -29,6 +29,22 @@ flowchart LR
 | 通知 | Discord Webhook | バックグラウンドで非同期通知 |
 | テスト | Vitest + @cloudflare/vitest-pool-workers | Workers ランタイム上でのテスト |
 
+## ディレクトリ構成
+
+```text
+src/
+├── index.ts               # Workerのメインエントリーポイント
+├── types.ts               # アプリケーション全体の型定義
+├── core/
+│   └── analysis.ts        # 【ビジネスロジック】メインの分析・状態判定
+├── utils/
+│   ├── stats.ts           # 【汎用ツール】統計計算（平均・中央値など）
+│   ├── parser.ts          # 【汎用ツール】データパース・時間計算
+│   └── auth.ts            # 【汎用ツール】セキュリティ・認証関連
+└── services/
+    └── external-api.ts    # 【外部連携】Gemini APIやDiscord Webhook等との通信
+```
+
 ## API 仕様
 
 ### エンドポイント一覧
