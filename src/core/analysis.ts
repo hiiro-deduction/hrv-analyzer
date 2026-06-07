@@ -155,11 +155,11 @@ export function buildPromptContext(metrics: AnalysisResult['metrics']): string {
     : `${metrics.sleep.today_deep_percentage.toFixed(1)}%`;
 
   const warningMessage = metrics.sleep.today_hours !== null && metrics.sleep.today_hours < 3
-    ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。ポジティブな評価は絶対に避けてください。"
+    ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。"
     : "";
 
   const deepSleepWarning = metrics.sleep.today_deep_percentage !== null && metrics.sleep.today_deep_percentage < 15
-    ? "\n\n※【システム警告】本日の深い睡眠の割合が15%を下回っています。睡眠の質が低下している可能性があるため、改善のためのアドバイスを含めてください。"
+    ? "\n\n※【システム警告】本日の深い睡眠の割合が15%を下回っています。"
     : "";
 
   return `【本日の体調データ】
