@@ -1,5 +1,27 @@
 import { describe, it, expect } from "vitest";
-import { parseShortcutData, calculateTotalHours } from "../../src/utils/parser";
+import { parseShortcutData, calculateTotalHours, parseDateWithJSTFallback } from "../../src/utils/parser";
+
+describe("Utils: parseDateWithJSTFallback", () => {
+  it("空文字が渡された場合、NaNの日付を返す", () => {
+    expect(isNaN(parseDateWithJSTFallback("").getTime())).toBe(true);
+    expect(isNaN(parseDateWithJSTFallback("   ").getTime())).toBe(true);
+  });
+
+  it("UTC(Z)が指定されている場合、UTCとしてパースする", () => {
+    const d = parseDateWithJSTFallback("2026-06-01T00:00:00Z");
+    expect(d.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("オフセット(+09:00など)が指定されている場合、そのオフセットでパースする", () => {
+    const d = parseDateWithJSTFallback("2026-06-01T09:00:00+09:00");
+    expect(d.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("タイムゾーン指定がない場合、JST(+09:00)としてパースする", () => {
+    const d = parseDateWithJSTFallback("2026-06-01T09:00:00");
+    expect(d.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+});
 
 describe("Utils: parseShortcutData", () => {
   it("空文字やundefinedが渡された場合、空配列を返す", () => {
