@@ -1,6 +1,6 @@
 # HRV Analyzer
 
-iPhoneのヘルスケアアプリ（Apple Watch）で取得した **睡眠中の心拍変動（HRV）**、**睡眠中の安静時心拍数（RHR）**、**睡眠時間**、**睡眠の質（深い睡眠の割合）** から、現在の体の疲労・回復状態を統計的に分析する Cloudflare Workers API です。
+iPhoneのヘルスケアアプリ（Apple Watch）で取得した **睡眠中の心拍変動（HRV）**、**睡眠中の安静時心拍数（RHR）**、**呼吸数（Respiratory Rate）**、**睡眠時間**、**睡眠の質（深い睡眠の割合）** から、現在の体の疲労・回復状態を統計的に分析する Cloudflare Workers API です。
 
 ## 概要
 
@@ -83,6 +83,10 @@ iOSショートカットから、カンマ区切りのテキストデータを�
   "rhr": {
     "rhr_dates": "<カンマ区切りの日時文字列>",
     "rhr_value": "<カンマ区切りの数値文字列>"
+  },
+  "respiratory_rate": {
+    "respiratory_rate_dates": "<カンマ区切りの日時文字列>",
+    "respiratory_rate_value": "<カンマ区切りの数値文字列>"
   }
 }
 ```
@@ -110,6 +114,8 @@ hrv_value の例:
 | | `sleep_value` | 睡眠ステージ（Core, Deep, REM, Asleep, InBed, Awake） |
 | **RHR（安静時心拍数）** | `rhr_dates` | 計測日時 |
 | | `rhr_value` | 安静時心拍数（bpm） |
+| **呼吸数** | `respiratory_rate_dates` | 計測日時 |
+| | `respiratory_rate_value` | 呼吸数（回/分） |
 
 #### レスポンス
 
@@ -120,6 +126,7 @@ hrv_value の例:
   "metrics": {
     "hrv": { "baseline_median": 39.6, "baseline_stddev": 21.7, "today": 31.2 },
     "rhr": { "baseline_mean": 65.4, "today": 72.0 },
+    "respiratory_rate": { "baseline_mean": 14.2, "today": 16.5 },
     "sleep": { "baseline_mean_hours": 7.2, "today_hours": 5.5, "today_deep_percentage": 18.5 }
   },
   "condition_text": "【本日の体調データ】\n・心拍変動(HRV): 31.2 (平常時中央値39.6±21.7より低め)\n...・深い睡眠の割合: 18.5%"
@@ -200,6 +207,13 @@ iOSショートカットからヘルスケアデータを受け取り、**即座
 | 過去1ヶ月の**平均睡眠時間** | 普段の睡眠習慣のベースライン |
 | 今日の**睡眠時間** | 今日の活動限界の予測 |
 | 今日の**深い睡眠の割合** | 身体的な回復度の評価（15%未満でシステム警告を追加） |
+
+### ④ 呼吸数（Respiratory Rate）— 身体的ストレスの指標
+
+| 統計量 | 目的 |
+|--------|------|
+| 過去1週間の呼吸数の**平均値** | 平常時の基準値 |
+| 最新の呼吸数の**値** | 平均値 + 1.5回/分を超えた場合に「通常より多い（身体的ストレス・体調不良の兆候）」と判定 |
 
 ## 開発
 

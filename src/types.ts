@@ -38,6 +38,13 @@ export interface HealthDataPayload {
     /** 測定値のカンマ区切り文字列 */
     rhr_value: string;
   };
+  /** 呼吸数(Respiratory Rate)のデータ */
+  respiratory_rate?: {
+    /** 測定日時のカンマ区切り文字列 */
+    respiratory_rate_dates: string;
+    /** 測定値のカンマ区切り文字列 (単位: 回/分) */
+    respiratory_rate_value: string;
+  };
 }
 
 /**
@@ -57,6 +64,13 @@ export interface AnalysisResult {
     };
     /** 安静時心拍数(RHR)の統計情報 */
     rhr: {
+      /** 過去の測定値の平均 (ベースライン) */
+      baseline_mean: number;
+      /** 今日の測定値の平均 (未測定の場合はnull) */
+      today: number | null;
+    };
+    /** 呼吸数(Respiratory Rate)の統計情報 */
+    respiratory_rate: {
       /** 過去の測定値の平均 (ベースライン) */
       baseline_mean: number;
       /** 今日の測定値の平均 (未測定の場合はnull) */

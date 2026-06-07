@@ -89,6 +89,7 @@ export function calculateHealthMetrics(data: HealthDataPayload): AnalysisResult[
   // 1. データのパース（文字列から配列へ復元）
   const hrvData = parseShortcutData(data.hrv?.hrv_dates, data.hrv?.hrv_value);
   const rhrData = parseShortcutData(data.rhr?.rhr_dates, data.rhr?.rhr_value);
+  const rrData = parseShortcutData(data.respiratory_rate?.respiratory_rate_dates, data.respiratory_rate?.respiratory_rate_value);
   const sleepData = parseShortcutData(data.sleep?.sleep_start_dates, data.sleep?.sleep_value, data.sleep?.sleep_end_dates);
 
   if (sleepData.length === 0) {
@@ -113,6 +114,9 @@ export function calculateHealthMetrics(data: HealthDataPayload): AnalysisResult[
   // RHRの計算（全期間）
   const [rhrBaseline, rhrRecent] = splitDataByTime(rhrData, twoDaysAgo);
 
+  // 呼吸数の計算（全期間）
+  const [rrBaseline, rrRecent] = splitDataByTime(rrData, oneDayAgo);
+
   // Sleepの計算
   const sleepMetrics = calculateSleepMetrics(actualSleepPeriods, oneDayAgo);
 
@@ -126,6 +130,10 @@ export function calculateHealthMetrics(data: HealthDataPayload): AnalysisResult[
     rhr: {
       baseline_mean: getMean(rhrBaseline),
       today: rhrRecent.length === 0 ? null : getMean(rhrRecent)
+    },
+    respiratory_rate: {
+      baseline_mean: getMean(rrBaseline),
+      today: rrRecent.length === 0 ? null : getMean(rrRecent)
     },
     sleep: sleepMetrics
   };
@@ -152,6 +160,13 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): string 
       rhrStatus = "高め（負荷あり）";
     }
   }
+
+  let rrStatus = "標準的";
+  if (metrics.respiratory_rate.today !== null) {
+    if (metrics.respiratory_rate.today > metrics.respiratory_rate.baseline_mean + 1.5) {
+      rrStatus = "通常より多い（身体的ストレス・体調不良の兆候）";
+    }
+  }
   
   let sleepStatus = "標準的";
   if (metrics.sleep.today_hours !== null) {
@@ -170,6 +185,10 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): string 
     ? "データ同期中"
     : `${metrics.rhr.today.toFixed(1)} (平常時平均${metrics.rhr.baseline_mean.toFixed(1)}より${rhrStatus})`;
     
+  const formatRr = metrics.respiratory_rate.today === null
+    ? "データ同期中"
+    : `${metrics.respiratory_rate.today.toFixed(1)}回/分 (平常時平均${metrics.respiratory_rate.baseline_mean.toFixed(1)}より${rrStatus})`;
+
   const formatSleep = metrics.sleep.today_hours === null
     ? "データ同期中"
     : `${metrics.sleep.today_hours.toFixed(1)}時間 (平常時${metrics.sleep.baseline_mean_hours.toFixed(1)}時間より${sleepStatus})`;
@@ -181,6 +200,7 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): string 
   return `【本日の体調データ】
 ・心拍変動(HRV): ${formatHrv}
 ・安静時心拍数(RHR): ${formatRhr}
+・呼吸数: ${formatRr}
 ・睡眠時間: ${formatSleep}
 ・深い睡眠の割合: ${formatDeepSleep}`;
 }

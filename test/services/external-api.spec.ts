@@ -91,6 +91,7 @@ describe("Services: external-api", () => {
     const baseMetrics = {
       hrv: { baseline_median: 40, baseline_stddev: 5, today: 40 },
       rhr: { baseline_mean: 60, today: 60 },
+      respiratory_rate: { baseline_mean: 15, today: 15 },
       sleep: { baseline_mean_hours: 7, today_hours: 7, today_deep_percentage: 20 }
     };
     const baseResult: AnalysisResult = {

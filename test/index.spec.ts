@@ -66,6 +66,10 @@ describe("Worker API: POST /", () => {
         rhr_dates: `${pastStart},${todayStart}`,
         rhr_value: "60.0,65.0"
       },
+      respiratory_rate: {
+        respiratory_rate_dates: `${pastStart},${todayStart}`,
+        respiratory_rate_value: "14.0,16.0"
+      },
       sleep: {
         sleep_start_dates: `${pastStart},${todayStart}`,
         sleep_end_dates: `${pastEnd},${todayEnd}`,
@@ -88,13 +92,16 @@ describe("Worker API: POST /", () => {
     expect(body.metrics).toBeDefined();
     expect(body.metrics.hrv.baseline_median).toBe(30);
     expect(body.metrics.rhr.baseline_mean).toBe(60);
+    expect(body.metrics.respiratory_rate.baseline_mean).toBe(14);
     expect(body.metrics.sleep.baseline_mean_hours).toBe(6); 
 
     expect(body.metrics.hrv.today).toBe(40);
     expect(body.metrics.rhr.today).toBe(65);
+    expect(body.metrics.respiratory_rate.today).toBe(16);
     expect(body.metrics.sleep.today_hours).toBe(6);
     expect(body).toHaveProperty("condition_text");
     expect(body.condition_text).toContain("【本日の体調データ】");
+    expect(body.condition_text).toContain("呼吸数: 16.0回/分 (平常時平均14.0より通常より多い（身体的ストレス・体調不良の兆候）)");
     expect(body.condition_text).toContain("睡眠時間: 6.0時間");
     expect(body.condition_text).toContain("深い睡眠の割合: 0.0%");
   });
@@ -187,6 +194,7 @@ describe("Worker API: POST /", () => {
     const payload = {
       hrv: { hrv_dates: `${pastStart}`, hrv_value: "30.0" },
       rhr: { rhr_dates: `${pastStart}`, rhr_value: "60.0" },
+      respiratory_rate: { respiratory_rate_dates: `${pastStart}`, respiratory_rate_value: "14.0" },
       sleep: { sleep_start_dates: `${pastStart}`, sleep_end_dates: `${pastEnd}`, sleep_value: "Core" }
     };
     
@@ -204,10 +212,12 @@ describe("Worker API: POST /", () => {
     
     expect(body.metrics.hrv.today).toBeNull();
     expect(body.metrics.rhr.today).toBeNull();
+    expect(body.metrics.respiratory_rate.today).toBeNull();
     expect(body.metrics.sleep.today_hours).toBeNull();
     
     expect(body.condition_text).toContain("心拍変動(HRV): データ同期中");
     expect(body.condition_text).toContain("安静時心拍数(RHR): データ同期中");
+    expect(body.condition_text).toContain("呼吸数: データ同期中");
     expect(body.condition_text).toContain("睡眠時間: データ同期中");
     expect(body.condition_text).toContain("深い睡眠の割合: データ同期中");
   });

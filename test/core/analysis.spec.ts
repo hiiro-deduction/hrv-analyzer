@@ -43,6 +43,7 @@ describe("formatConditionData", () => {
     const metrics = {
       hrv: { baseline_median: 40, baseline_stddev: 5, today: 45 },
       rhr: { baseline_mean: 60, today: 58 },
+      respiratory_rate: { baseline_mean: 15, today: 15 },
       sleep: { baseline_mean_hours: 7, today_hours: 8, today_deep_percentage: 20 }
     };
     const prompt = formatConditionData(metrics);
@@ -56,6 +57,7 @@ describe("formatConditionData", () => {
     const metrics = {
       hrv: { baseline_median: 0, baseline_stddev: 0, today: null },
       rhr: { baseline_mean: 0, today: null },
+      respiratory_rate: { baseline_mean: 0, today: null },
       sleep: { baseline_mean_hours: 0, today_hours: null, today_deep_percentage: null }
     };
     const prompt = formatConditionData(metrics);
@@ -68,6 +70,7 @@ describe("formatConditionData", () => {
     const metrics = {
       hrv: { baseline_median: 40, baseline_stddev: 5, today: 45 },
       rhr: { baseline_mean: 60, today: 58 },
+      respiratory_rate: { baseline_mean: 15, today: 15 },
       sleep: { baseline_mean_hours: 7, today_hours: 2, today_deep_percentage: 10 }
     };
     const prompt = formatConditionData(metrics);
