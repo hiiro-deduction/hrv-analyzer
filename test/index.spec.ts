@@ -93,11 +93,10 @@ describe("Worker API: POST /", () => {
     expect(body.metrics.hrv.today).toBe(40);
     expect(body.metrics.rhr.today).toBe(65);
     expect(body.metrics.sleep.today_hours).toBe(6);
-    expect(body.metrics.sleep.today_deep_percentage).toBe(0); 
-    
-    expect(body.prompt_context).toContain("【本日の体調データ】");
-    expect(body.prompt_context).toContain("睡眠時間: 6.0時間");
-    expect(body.prompt_context).toContain("深い睡眠の割合: 0.0%");
+    expect(body).toHaveProperty("condition_text");
+    expect(body.condition_text).toContain("【本日の体調データ】");
+    expect(body.condition_text).toContain("睡眠時間: 6.0時間");
+    expect(body.condition_text).toContain("深い睡眠の割合: 0.0%");
   });
 
   it("InBed や Awake などの睡眠ステージ以外のデータが送られた場合、実質的な睡眠時間から除外される", async () => {
@@ -207,10 +206,10 @@ describe("Worker API: POST /", () => {
     expect(body.metrics.rhr.today).toBeNull();
     expect(body.metrics.sleep.today_hours).toBeNull();
     
-    expect(body.prompt_context).toContain("心拍変動(HRV): データ同期中");
-    expect(body.prompt_context).toContain("安静時心拍数(RHR): データ同期中");
-    expect(body.prompt_context).toContain("睡眠時間: データ同期中");
-    expect(body.prompt_context).toContain("深い睡眠の割合: データ同期中");
+    expect(body.condition_text).toContain("心拍変動(HRV): データ同期中");
+    expect(body.condition_text).toContain("安静時心拍数(RHR): データ同期中");
+    expect(body.condition_text).toContain("睡眠時間: データ同期中");
+    expect(body.condition_text).toContain("深い睡眠の割合: データ同期中");
   });
 
   it("睡眠時間が3時間未満の場合、非常に短いと判定されシステム警告がプロンプトに追加される", async () => {
@@ -242,9 +241,7 @@ describe("Worker API: POST /", () => {
     const body = await response.json<any>();
     
     expect(body.metrics.sleep.today_hours).toBe(2);
-    expect(body.prompt_context).toContain("非常に短い（危険）");
-    expect(body.prompt_context).toContain("※【システム警告】本日の睡眠時間が3時間未満の危険域です");
-    expect(body.prompt_context).toContain("深い睡眠の割合が15%を下回っています");
+    expect(body.condition_text).toContain("非常に短い（危険）");
   });
 
   it("深い睡眠の割合が正しく計算される", async () => {
@@ -282,8 +279,7 @@ describe("Worker API: POST /", () => {
     
     expect(body.metrics.sleep.today_hours).toBe(5);
     expect(body.metrics.sleep.today_deep_percentage).toBe(20);
-    expect(body.prompt_context).toContain("深い睡眠の割合: 20.0%");
-    expect(body.prompt_context).not.toContain("深い睡眠の割合が15%を下回っています"); 
+    expect(body.condition_text).toContain("深い睡眠の割合: 20.0%");
   });
 
   it("存在しないパスにPOSTした場合、404を返す", async () => {

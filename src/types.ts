@@ -72,8 +72,8 @@ export interface AnalysisResult {
       today_deep_percentage: number | null;
     };
   };
-  /** AIに渡すための自然言語のプロンプトテキスト */
-  prompt_context: string;
+  /** 現在のコンディションをテキストにフォーマットしたもの */
+  condition_text: string;
 }
 
 /**

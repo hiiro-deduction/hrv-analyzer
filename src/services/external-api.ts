@@ -2,20 +2,17 @@
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
 /**
- * Gemini APIを呼び出してヘルスデータに基づくアドバイスを取得する
- * @param promptContext analyzeHealthData() で生成されたプロンプトコンテキスト
+ * Gemini APIを呼び出してテキストを生成する
+ * @param prompt APIに送信するプロンプト文字列
  * @param apiKey Gemini API キー
  * @returns Geminiの応答テキスト
  */
-export async function callGeminiAPI(promptContext: string, apiKey: string): Promise<string> {
-  const userPrompt = `${promptContext}\n\nこれを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。
-  冒頭は「おはようございます」など挨拶から始めてください。`;
-
+export async function callGeminiAPI(prompt: string, apiKey: string): Promise<string> {
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      contents: [{ parts: [{ text: userPrompt }] }],
+      contents: [{ parts: [{ text: prompt }] }],
     }),
   });
 

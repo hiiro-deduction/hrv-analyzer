@@ -4,21 +4,35 @@ import { callGeminiAPI, sendDiscordNotification } from './services/external-api'
 import { secureCompare } from './utils/auth';
 
 /**
- * バックグラウンドで Gemini API → Discord Webhook の一連の処理を実行する
- * ctx.waitUntil() から呼び出される
- * @param promptContext 分析結果のプロンプトコンテキスト
+ * バックグラウンドで非同期実行される通知プロセス
+ * @param analysisResult 分析結果
  * @param env 環境変数
  */
-async function processNotificationInBackground(promptContext: string, env: Env): Promise<void> {
+async function processNotificationInBackground(analysisResult: AnalysisResult, env: Env): Promise<void> {
   try {
-    // Gemini APIでアドバイスを取得
-    const advice = await callGeminiAPI(promptContext, env.GEMINI_API_KEY!);
-
-   // プロンプト用の指示文やシステム警告をカットして、綺麗なデータ部分だけを残す
-    const cleanData = promptContext.split('\n\n上記は私の今日のコンディションデータです。')[0];
+    const metrics = analysisResult.metrics;
     
-    // Discord にプロンプトコンテキスト（体調データ）とアドバイスを送信
-    const discordMessage = `${cleanData}\n\n**AIアドバイス:**\n${advice}`;
+    // システム警告の生成
+    const warningMessage = metrics.sleep.today_hours !== null && metrics.sleep.today_hours < 3
+      ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。"
+      : "";
+    const deepSleepWarning = metrics.sleep.today_deep_percentage !== null && metrics.sleep.today_deep_percentage < 15
+      ? "\n\n※【システム警告】本日の深い睡眠の割合が15%を下回っています。"
+      : "";
+
+    // LLMに渡す最終的なプロンプトを構築
+    const userPrompt = `${analysisResult.condition_text}
+
+上記は私の今日のコンディションデータです。${warningMessage}${deepSleepWarning}
+
+これを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。
+冒頭は「おはようございます」など挨拶から始めてください。`;
+
+    // Gemini APIでアドバイスを取得
+    const advice = await callGeminiAPI(userPrompt, env.GEMINI_API_KEY!);
+    
+    // Discord にコンディションテキストとアドバイスを送信
+    const discordMessage = `${analysisResult.condition_text}\n\n**AIアドバイス:**\n${advice}`;
     await sendDiscordNotification(discordMessage, env.DISCORD_WEBHOOK_URL!);
     
     console.log('バックグラウンド処理完了: Gemini → Discord 通知成功');
@@ -104,8 +118,8 @@ async function handleNotify(request: Request, env: Env, ctx: ExecutionContext): 
     return Response.json({ error: "Internal Server Error" }, { status: 500 });
   }
 
-  // バックグラウンドで Gemini → Discord 処理を起動
-  ctx.waitUntil(processNotificationInBackground(result.prompt_context, env));
+  // バックグラウンドで非同期実行
+  ctx.waitUntil(processNotificationInBackground(result, env));
 
   // iOSショートカットには即座にレスポンスを返す
   return Response.json(

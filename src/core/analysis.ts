@@ -108,15 +108,15 @@ export function calculateHealthMetrics(data: HealthDataPayload): AnalysisResult[
 }
 
 /**
- * 統計メトリクスから状態判定を行い、AI向けのプロンプトコンテキストを構築する
- * @param metrics 算出された統計メトリクス
- * @returns プロンプトの文字列
+ * 体調データのメトリクスを人が読めるテキストにフォーマットする
+ * @param metrics 計算済みのメトリクス
+ * @returns フォーマットされたテキスト
  */
-export function buildPromptContext(metrics: AnalysisResult['metrics']): string {
-  let hrvStatus = "良好";
+export function formatConditionData(metrics: AnalysisResult['metrics']): string {
+  let hrvStatus = "標準的";
   if (metrics.hrv.today !== null) {
     if (metrics.hrv.today < (metrics.hrv.baseline_median - metrics.hrv.baseline_stddev)) {
-      hrvStatus = "大きく低下（疲労あり）";
+      hrvStatus = "大きく低下";
     } else if (metrics.hrv.today < metrics.hrv.baseline_median) {
       hrvStatus = "やや低め";
     }
@@ -154,21 +154,11 @@ export function buildPromptContext(metrics: AnalysisResult['metrics']): string {
     ? "データ同期中"
     : `${metrics.sleep.today_deep_percentage.toFixed(1)}%`;
 
-  const warningMessage = metrics.sleep.today_hours !== null && metrics.sleep.today_hours < 3
-    ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。"
-    : "";
-
-  const deepSleepWarning = metrics.sleep.today_deep_percentage !== null && metrics.sleep.today_deep_percentage < 15
-    ? "\n\n※【システム警告】本日の深い睡眠の割合が15%を下回っています。"
-    : "";
-
   return `【本日の体調データ】
 ・心拍変動(HRV): ${formatHrv}
 ・安静時心拍数(RHR): ${formatRhr}
 ・睡眠時間: ${formatSleep}
-・深い睡眠の割合: ${formatDeepSleep}
-
-上記は私の今日のコンディションデータです。${warningMessage}${deepSleepWarning}`;
+・深い睡眠の割合: ${formatDeepSleep}`;
 }
 
 /**
@@ -179,6 +169,6 @@ export function buildPromptContext(metrics: AnalysisResult['metrics']): string {
  */
 export function analyzeHealthData(data: HealthDataPayload): AnalysisResult {
   const metrics = calculateHealthMetrics(data);
-  const prompt_context = buildPromptContext(metrics);
-  return { metrics, prompt_context };
+  const condition_text = formatConditionData(metrics);
+  return { metrics, condition_text };
 }
