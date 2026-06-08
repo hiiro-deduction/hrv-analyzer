@@ -26,12 +26,16 @@ export function parseShortcutData(dateStr?: string, valueStr?: string, endDateSt
   const dates = dateStr.trim().split(',');
   const values = valueStr.trim().split(',');
   const endDates = endDateStr ? endDateStr.trim().split(',') : null;
+  
+  // 値の配列長が日付の配列長より短い場合は、エラーを防ぐため短い方に合わせる
+  const minLength = Math.min(dates.length, values.length);
 
-  return dates.map((date, index) => {
+  return dates.slice(0, minLength).map((date, index) => {
     let parsedValue: number | string = 0; // デフォルト値（欠損対策）
-    if (values[index] !== undefined && values[index].trim() !== "") {
-      const num = parseFloat(values[index]);
-      parsedValue = !isNaN(num) ? num : values[index]; // 数値に変換できれば数値、できなければ文字列（Awake等）
+    const rawValue = values[index];
+    if (rawValue !== undefined && rawValue.trim() !== "") {
+      const num = parseFloat(rawValue);
+      parsedValue = !isNaN(num) ? num : rawValue.trim(); // 数値に変換できれば数値、できなければ文字列（Awake等）
     }
 
     const obj: ParsedHealthData = {

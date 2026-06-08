@@ -95,8 +95,9 @@ describe("Services: external-api", () => {
       sleep: { baseline_mean_hours: 7, today_hours: 7, today_deep_percentage: 20 }
     };
     const baseResult: AnalysisResult = {
-      metrics: baseMetrics,
-      condition_text: "テストコンディション"
+      metrics: baseMetrics as any,
+      condition_text: "テストコンディション",
+      system_warnings: []
     };
 
     it("正常なデータの場合、警告メッセージは空でプロンプトが生成される", () => {
@@ -107,30 +108,19 @@ describe("Services: external-api", () => {
       expect(geminiPrompt).not.toContain("システム警告");
     });
 
-    it("睡眠時間が3時間未満の場合、警告が追加される", () => {
-      const result = {
+    it("システム警告が設定されている場合、プロンプトとDiscord通知に追加される", () => {
+      const result: AnalysisResult = {
         ...baseResult,
-        metrics: {
-          ...baseResult.metrics,
-          sleep: { ...baseResult.metrics.sleep, today_hours: 2 }
-        }
+        system_warnings: [
+          "本日の睡眠時間が3時間未満の危険域です。",
+          "本日の深い睡眠の割合が15%を下回っています。"
+        ]
       };
       const { discordWarning, geminiPrompt } = buildGeminiPrompt(result);
-      expect(discordWarning).toContain("睡眠時間が3時間未満の危険域");
-      expect(geminiPrompt).toContain("睡眠時間が3時間未満の危険域");
-    });
-
-    it("深い睡眠が15%未満の場合、警告が追加される", () => {
-      const result = {
-        ...baseResult,
-        metrics: {
-          ...baseResult.metrics,
-          sleep: { ...baseResult.metrics.sleep, today_deep_percentage: 10 }
-        }
-      };
-      const { discordWarning, geminiPrompt } = buildGeminiPrompt(result);
-      expect(discordWarning).toContain("深い睡眠の割合が15%を下回っています");
-      expect(geminiPrompt).toContain("深い睡眠の割合が15%を下回っています");
+      expect(discordWarning).toContain("睡眠時間が3時間未満の危険域です。");
+      expect(discordWarning).toContain("深い睡眠の割合が15%を下回っています。");
+      expect(geminiPrompt).toContain("睡眠時間が3時間未満の危険域です。");
+      expect(geminiPrompt).toContain("深い睡眠の割合が15%を下回っています。");
     });
   });
 });

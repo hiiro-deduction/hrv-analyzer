@@ -51,29 +51,29 @@ export interface HealthDataPayload {
  * データ分析結果の型定義
  */
 export interface AnalysisResult {
-  /** 計算された各種ヘルスケアメトリクス */
+  /** 計算された各メトリクスの統計データ */
   metrics: {
     /** 心拍変動(HRV)の統計情報 */
     hrv: {
-      /** 過去の測定値の中央値 (ベースライン) */
+      /** 過去の中央値（ベースライン） */
       baseline_median: number;
-      /** 過去の測定値の標準偏差 */
+      /** 過去の標準偏差 */
       baseline_stddev: number;
-      /** 今日の測定値の平均 (未測定の場合はnull) */
+      /** 今日の平均値（未測定の場合はnull） */
       today: number | null;
     };
     /** 安静時心拍数(RHR)の統計情報 */
     rhr: {
-      /** 過去の測定値の平均 (ベースライン) */
+      /** 過去の平均値（ベースライン） */
       baseline_mean: number;
-      /** 今日の測定値の平均 (未測定の場合はnull) */
+      /** 今日の平均値（未測定の場合はnull） */
       today: number | null;
     };
     /** 呼吸数(Respiratory Rate)の統計情報 */
     respiratory_rate: {
-      /** 過去の測定値の平均 (ベースライン) */
+      /** 過去の平均値（ベースライン） */
       baseline_mean: number;
-      /** 今日の測定値の平均 (未測定の場合はnull) */
+      /** 今日の平均値（未測定の場合はnull） */
       today: number | null;
     };
     /** 睡眠時間の統計情報 */
@@ -88,8 +88,15 @@ export interface AnalysisResult {
       today_deep_percentage: number | null;
     };
   };
-  /** 現在のコンディションをテキストにフォーマットしたもの */
+  /** 
+   * 分析結果から生成された、人が読める形式のコンディション説明テキスト
+   * （Gemini APIのプロンプトおよびDiscordの通知に使用される）
+   */
   condition_text: string;
+  /**
+   * 危険域に達しているメトリクスがある場合に生成されるシステム警告の配列
+   */
+  system_warnings: string[];
 }
 
 /**

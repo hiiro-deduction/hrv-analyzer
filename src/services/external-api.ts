@@ -2,7 +2,6 @@
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent';
 
 import { AnalysisResult } from '../types';
-import { CRITICAL_SLEEP_HOURS, LOW_DEEP_SLEEP_PERCENTAGE } from '../core/analysis';
 
 /**
  * Gemini APIを呼び出してテキストを生成する
@@ -67,25 +66,19 @@ export async function sendDiscordNotification(message: string, webhookUrl: strin
  * @returns [Discordに送信するシステム警告のテキスト, Geminiに送信するプロンプト] のオブジェクト
  */
 export function buildGeminiPrompt(analysisResult: AnalysisResult): { discordWarning: string, geminiPrompt: string } {
-  const metrics = analysisResult.metrics;
   let discordWarning = "";
   
-  // システム警告の生成
-  const warningMessage = metrics.sleep.today_hours !== null && metrics.sleep.today_hours < CRITICAL_SLEEP_HOURS
-    ? "\n\n※【システム警告】本日の睡眠時間が3時間未満の危険域です。"
-    : "";
-  const deepSleepWarning = metrics.sleep.today_deep_percentage !== null && metrics.sleep.today_deep_percentage < LOW_DEEP_SLEEP_PERCENTAGE
-    ? "\n\n※【システム警告】本日の深い睡眠の割合が15%を下回っています。"
-    : "";
-
-  if (warningMessage || deepSleepWarning) {
-    discordWarning = `${warningMessage}${deepSleepWarning}`;
+  // システム警告の生成（analysis.tsのフォーマッターで生成された警告配列を使用）
+  let warningMessage = "";
+  if (analysisResult.system_warnings && analysisResult.system_warnings.length > 0) {
+    warningMessage = "\n\n※【システム警告】\n" + analysisResult.system_warnings.map(w => "・" + w).join("\n");
+    discordWarning = warningMessage;
   }
 
   // LLMに渡す最終的なプロンプトを構築
   const geminiPrompt = `${analysisResult.condition_text}
 
-上記は私の今日のコンディションデータです。${warningMessage}${deepSleepWarning}
+上記は私の今日のコンディションデータです。${warningMessage}
 
 これを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。
 冒頭は「おはようございます」など挨拶から始めてください。`;
