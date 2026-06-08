@@ -80,6 +80,8 @@ export interface AnalysisResult {
     sleep: {
       /** 過去の平均睡眠時間（時間単位） */
       baseline_mean_hours: number;
+      /** 過去の深い睡眠の割合の平均（%） */
+      baseline_deep_percentage: number | null;
       /** 今日の睡眠時間（時間単位、未測定の場合はnull） */
       today_hours: number | null;
       /** 今日の深い睡眠(Deep)の割合（%、未測定の場合はnull） */

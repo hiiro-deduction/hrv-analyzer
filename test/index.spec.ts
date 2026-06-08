@@ -54,6 +54,7 @@ describe("Worker API: POST /", () => {
   it("正常なヘルスケアデータを送信した場合、正しい統計値とプロンプトを返す", async () => {
     const todayStart = "2026-06-04T00:00:00Z";
     const todayEnd = "2026-06-04T06:00:00Z";
+    const yesterdayStart = "2026-06-03T00:00:00Z";
     const pastStart = "2026-06-01T00:00:00Z";
     const pastEnd = "2026-06-01T06:00:00Z";
 
@@ -63,7 +64,7 @@ describe("Worker API: POST /", () => {
         hrv_value: "30.0,40.0"
       },
       rhr: {
-        rhr_dates: `${pastStart},${todayStart}`,
+        rhr_dates: `${pastStart},${yesterdayStart}`,
         rhr_value: "60.0,65.0"
       },
       respiratory_rate: {
@@ -101,7 +102,7 @@ describe("Worker API: POST /", () => {
     expect(body.metrics.sleep.today_hours).toBe(6);
     expect(body).toHaveProperty("condition_text");
     expect(body.condition_text).toContain("【本日の体調データ】");
-    expect(body.condition_text).toContain("呼吸数: 16.0回/分 (平常時平均14.0より通常より多い（身体的ストレス・体調不良の兆候）)");
+    expect(body.condition_text).toContain("呼吸数: 16.0回/分 (平常時平均14.0より多い（体調不良の兆候）)");
     expect(body.condition_text).toContain("睡眠時間: 6.0時間");
     expect(body.condition_text).toContain("深い睡眠の割合: 0.0%");
   });
@@ -162,14 +163,15 @@ describe("Worker API: POST /", () => {
     expect(body.metrics.hrv.today).toBe(50);
   });
 
-  it("RHRは睡眠中かどうかにかかわらず1日1回のサマリーデータとして計算される", async () => {
+  it("RHRは前日のサマリーデータとして計算される", async () => {
     const sleepStart = "2026-06-04T01:00:00Z";
     const sleepEnd = "2026-06-04T06:00:00Z";
     const measureTime = "2026-06-04T12:00:00Z";
+    const rhrMeasureTime = "2026-06-03T00:00:00Z";
 
     const payload = {
       hrv: { hrv_dates: measureTime, hrv_value: "50.0" },
-      rhr: { rhr_dates: measureTime, rhr_value: "65.0" },
+      rhr: { rhr_dates: rhrMeasureTime, rhr_value: "65.0" },
       sleep: { sleep_start_dates: sleepStart, sleep_end_dates: sleepEnd, sleep_value: "Core" }
     };
     
@@ -251,7 +253,7 @@ describe("Worker API: POST /", () => {
     const body = await response.json<any>();
     
     expect(body.metrics.sleep.today_hours).toBe(2);
-    expect(body.condition_text).toContain("非常に短い（危険）");
+    expect(body.condition_text).toContain("非常に短い（システム警告）");
   });
 
   it("深い睡眠の割合が正しく計算される", async () => {

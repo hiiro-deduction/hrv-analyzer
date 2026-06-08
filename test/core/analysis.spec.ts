@@ -44,7 +44,7 @@ describe("formatConditionData", () => {
       hrv: { baseline_median: 40, baseline_stddev: 5, today: 45 },
       rhr: { baseline_mean: 60, today: 58 },
       respiratory_rate: { baseline_mean: 15, today: 15 },
-      sleep: { baseline_mean_hours: 7, today_hours: 8, today_deep_percentage: 20 }
+      sleep: { baseline_mean_hours: 7, baseline_deep_percentage: 25, today_hours: 8, today_deep_percentage: 20 }
     };
     const prompt = formatConditionData(metrics);
     expect(prompt).toContain("心拍変動(HRV): 45.0");
@@ -58,7 +58,7 @@ describe("formatConditionData", () => {
       hrv: { baseline_median: 0, baseline_stddev: 0, today: null },
       rhr: { baseline_mean: 0, today: null },
       respiratory_rate: { baseline_mean: 0, today: null },
-      sleep: { baseline_mean_hours: 0, today_hours: null, today_deep_percentage: null }
+      sleep: { baseline_mean_hours: 0, baseline_deep_percentage: null, today_hours: null, today_deep_percentage: null }
     };
     const prompt = formatConditionData(metrics);
     expect(prompt).toContain("心拍変動(HRV): データ同期中");
@@ -66,14 +66,16 @@ describe("formatConditionData", () => {
     expect(prompt).toContain("深い睡眠の割合: データ同期中");
   });
 
-  it("睡眠時間が短く深い睡眠割合が低い場合でも警告テキストは含まれない", () => {
+  it("睡眠時間が短く深い睡眠割合が低い場合はシステム警告テキストが含まれる", () => {
     const metrics = {
       hrv: { baseline_median: 40, baseline_stddev: 5, today: 45 },
       rhr: { baseline_mean: 60, today: 58 },
       respiratory_rate: { baseline_mean: 15, today: 15 },
-      sleep: { baseline_mean_hours: 7, today_hours: 2, today_deep_percentage: 10 }
+      sleep: { baseline_mean_hours: 7, baseline_deep_percentage: 25, today_hours: 2, today_deep_percentage: 10 }
     };
     const prompt = formatConditionData(metrics);
-    expect(prompt).not.toContain("システム警告");
+    // 元々「システム警告は含まれない」というテストだったが、現在は10%や2時間の場合は「システム警告」を含む仕様になった。
+    // そのためテストの意図を変えて、システム警告が含まれることを確認するテストにする
+    expect(prompt).toContain("システム警告");
   });
 });

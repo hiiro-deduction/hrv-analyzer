@@ -68,6 +68,10 @@ function calculateSleepMetrics(sleepPeriods: ParsedHealthData[], oneDayAgo: Date
   const sleepDaysCount = uniqueSleepDays.size > 0 ? uniqueSleepDays.size : 1; 
   const baselineMeanHours = baselineSleepHoursTotal / sleepDaysCount;
 
+  const baselineDeepPeriods = baselineSleepPeriods.filter(item => typeof item.value === 'string' && item.value.toLowerCase() === 'deep');
+  const baselineDeepTotal = calculateTotalHours(baselineDeepPeriods);
+  const baselineDeepPercentage = baselineSleepHoursTotal > 0 ? (baselineDeepTotal / baselineSleepHoursTotal) * 100 : null;
+
   const sleepTodayPeriods = sleepPeriods.filter(item => 
     (item.end && item.end >= oneDayAgo) || (!item.end && item.start >= oneDayAgo)
   );
@@ -79,6 +83,7 @@ function calculateSleepMetrics(sleepPeriods: ParsedHealthData[], oneDayAgo: Date
   
   return {
     baseline_mean_hours: baselineMeanHours,
+    baseline_deep_percentage: baselineDeepPercentage,
     today_hours: isSleepMissing ? null : todayTotal,
     today_deep_percentage: (isSleepMissing || todayTotal === 0) ? null : (sleepTodayDeepTotal / todayTotal) * 100
   };
@@ -106,20 +111,24 @@ export function calculateHealthMetrics(data: HealthDataPayload): AnalysisResult[
   // 3. 睡眠中のHRVを抽出するためのフィルタ
   const isDuringSleep = createSleepFilter(actualSleepPeriods);
 
-  // 4. ベースライン（過去）と今日（直近24時間）のデータを分割する
+  // 4. ベースライン（過去）と評価対象のデータを分割するための境界時刻を定義する
   const now = new Date();
-  const oneDayAgo = new Date(now.getTime() - MS_PER_DAY);
-  const twoDaysAgo = new Date(now.getTime() - (2 * MS_PER_DAY));
+  const oneDayAgo = new Date(now.getTime() - MS_PER_DAY);          // 今日の睡眠・HRVの境界
+  const twoDaysAgo = new Date(now.getTime() - (2 * MS_PER_DAY));   // RHRの前日判定用の境界
+  const sevenDaysAgo = new Date(now.getTime() - (7 * MS_PER_DAY)); // 呼吸数のベースライン(過去7日)用の境界
 
   // HRVの計算（睡眠中のデータのみ）
   const hrvDuringSleep = hrvData.filter(item => isDuringSleep(item.start));
   const [hrvBaseline, hrvToday] = splitDataByTime(hrvDuringSleep, oneDayAgo);
   
-  // RHRの計算（全期間）
-  const [rhrBaseline, rhrRecent] = splitDataByTime(rhrData, twoDaysAgo);
+  // RHRの計算（前日のデータのみをtodayとして扱う）
+  const rhrBaseline = rhrData.filter(item => item.start < twoDaysAgo).map(item => Number(item.value));
+  const rhrRecent = rhrData.filter(item => item.start >= twoDaysAgo && item.start < oneDayAgo).map(item => Number(item.value));
 
-  // 呼吸数の計算（全期間）
-  const [rrBaseline, rrRecent] = splitDataByTime(rrData, oneDayAgo);
+  // 呼吸数の計算（睡眠中のデータのみ、過去7日間をベースライン）
+  const rrDuringSleep = rrData.filter(item => isDuringSleep(item.start));
+  const rrBaseline = rrDuringSleep.filter(item => item.start >= sevenDaysAgo && item.start < oneDayAgo).map(item => Number(item.value));
+  const rrRecent = rrDuringSleep.filter(item => item.start >= oneDayAgo).map(item => Number(item.value));
 
   // Sleepの計算
   const sleepMetrics = calculateSleepMetrics(actualSleepPeriods, oneDayAgo);
@@ -152,7 +161,7 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): string 
   let hrvStatus = "標準的";
   if (metrics.hrv.today !== null) {
     if (metrics.hrv.today < (metrics.hrv.baseline_median - metrics.hrv.baseline_stddev)) {
-      hrvStatus = "大きく低下";
+      hrvStatus = "大きく低下（強い疲労）";
     } else if (metrics.hrv.today < metrics.hrv.baseline_median) {
       hrvStatus = "やや低め";
     }
@@ -168,16 +177,25 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): string 
   let rrStatus = "標準的";
   if (metrics.respiratory_rate.today !== null) {
     if (metrics.respiratory_rate.today > metrics.respiratory_rate.baseline_mean + 1.5) {
-      rrStatus = "通常より多い（身体的ストレス・体調不良の兆候）";
+      rrStatus = "多い（体調不良の兆候）";
     }
   }
   
   let sleepStatus = "標準的";
   if (metrics.sleep.today_hours !== null) {
     if (metrics.sleep.today_hours < CRITICAL_SLEEP_HOURS) {
-      sleepStatus = "非常に短い（危険）";
+      sleepStatus = "非常に短い（システム警告）";
     } else if (metrics.sleep.today_hours < metrics.sleep.baseline_mean_hours - 1) {
       sleepStatus = "短い";
+    }
+  }
+
+  let deepSleepStatus = "標準的";
+  if (metrics.sleep.today_deep_percentage !== null) {
+    if (metrics.sleep.today_deep_percentage < 15) {
+      deepSleepStatus = "質が低下（システム警告）";
+    } else if (metrics.sleep.baseline_deep_percentage !== null && metrics.sleep.today_deep_percentage < metrics.sleep.baseline_deep_percentage - 5) {
+      deepSleepStatus = "普段より質が低下";
     }
   }
 
@@ -199,7 +217,7 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): string 
 
   const formatDeepSleep = metrics.sleep.today_deep_percentage === null
     ? "データ同期中"
-    : `${metrics.sleep.today_deep_percentage.toFixed(1)}%`;
+    : `${metrics.sleep.today_deep_percentage.toFixed(1)}% (${deepSleepStatus})`;
 
   return `【本日の体調データ】
 ・心拍変動(HRV): ${formatHrv}
