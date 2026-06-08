@@ -108,19 +108,19 @@ describe("Services: external-api", () => {
       expect(geminiPrompt).not.toContain("システム警告");
     });
 
-    it("システム警告が設定されている場合、プロンプトとDiscord通知に追加される", () => {
+    it("システム警告が設定されていても、discordWarning は空文字を返し、プロンプトにはcondition_textがそのまま使用される", () => {
       const result: AnalysisResult = {
         ...baseResult,
+        condition_text: "テストコンディション（警告付き）",
         system_warnings: [
           "本日の睡眠時間が3時間未満の危険域です。",
           "本日の深い睡眠の割合が15%を下回っています。"
         ]
       };
       const { discordWarning, geminiPrompt } = buildGeminiPrompt(result);
-      expect(discordWarning).toContain("睡眠時間が3時間未満の危険域です。");
-      expect(discordWarning).toContain("深い睡眠の割合が15%を下回っています。");
-      expect(geminiPrompt).toContain("睡眠時間が3時間未満の危険域です。");
-      expect(geminiPrompt).toContain("深い睡眠の割合が15%を下回っています。");
+      expect(discordWarning).toBe("");
+      expect(geminiPrompt).toContain("テストコンディション（警告付き）");
+      expect(geminiPrompt).not.toContain("睡眠時間が3時間未満の危険域です。"); // condition_text自体に含まれていない場合はプロンプトにも追加されない
     });
   });
 });

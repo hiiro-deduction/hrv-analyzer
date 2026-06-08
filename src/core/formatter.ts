@@ -84,12 +84,16 @@ export function formatConditionData(metrics: AnalysisResult['metrics']): Formatt
     ? "データ同期中"
     : `${metrics.sleep.today_deep_percentage.toFixed(1)}% (${deepSleepStatus})`;
 
-  const condition_text = `【本日の体調データ】
+  let condition_text = `【本日の体調データ】
 ・心拍変動(HRV): ${formatHrv}
 ・安静時心拍数(RHR): ${formatRhr}
 ・呼吸数: ${formatRr}
 ・睡眠時間: ${formatSleep}
 ・深い睡眠の割合: ${formatDeepSleep}`;
+
+  if (systemWarnings.length > 0) {
+    condition_text += `\n\n※【システム警告】\n` + systemWarnings.map(w => `・警告：${w}`).join('\n');
+  }
 
   return { condition_text, system_warnings: systemWarnings };
 }

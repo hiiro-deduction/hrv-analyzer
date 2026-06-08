@@ -66,19 +66,14 @@ export async function sendDiscordNotification(message: string, webhookUrl: strin
  * @returns [Discordに送信するシステム警告のテキスト, Geminiに送信するプロンプト] のオブジェクト
  */
 export function buildGeminiPrompt(analysisResult: AnalysisResult): { discordWarning: string, geminiPrompt: string } {
-  let discordWarning = "";
-  
-  // システム警告の生成（analysis.tsのフォーマッターで生成された警告配列を使用）
-  let warningMessage = "";
-  if (analysisResult.system_warnings && analysisResult.system_warnings.length > 0) {
-    warningMessage = "\n\n※【システム警告】\n" + analysisResult.system_warnings.map(w => "・" + w).join("\n");
-    discordWarning = warningMessage;
-  }
+  // システム警告は analysisResult.condition_text に含まれるようになったため、
+  // discordWarning は空文字を返します（二重出力を防ぐため）。
+  const discordWarning = "";
 
   // LLMに渡す最終的なプロンプトを構築
   const geminiPrompt = `${analysisResult.condition_text}
 
-上記は私の今日のコンディションデータです。${warningMessage}
+上記は私の今日のコンディションデータです。
 
 これを踏まえて、今日の過ごし方のアドバイスを200文字以内で優しく教えてください。
 冒頭は「おはようございます」など挨拶から始めてください。`;

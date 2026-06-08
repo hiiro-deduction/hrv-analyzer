@@ -39,9 +39,13 @@ describe("formatConditionData", () => {
       sleep: { baseline_mean_hours: 7, baseline_deep_percentage: 25, today_hours: 2, today_deep_percentage: 10 }
     };
     const { condition_text, system_warnings } = formatConditionData(metrics);
-    expect(condition_text).toContain("システム警告");
     expect(system_warnings.length).toBe(2);
     expect(system_warnings[0]).toContain("3時間未満の危険域");
     expect(system_warnings[1]).toContain("15%を下回っています");
+    
+    // condition_textの末尾に警告が「警告：」というプレフィックス付きで結合されていることを確認
+    expect(condition_text).toContain("※【システム警告】");
+    expect(condition_text).toContain("・警告：本日の睡眠時間が3時間未満の危険域です。");
+    expect(condition_text).toContain("・警告：本日の深い睡眠の割合が15%を下回っています。");
   });
 });
