@@ -94,4 +94,14 @@ describe("Utils: calculateTotalHours", () => {
     ];
     expect(calculateTotalHours(periods)).toBe(3.5);
   });
+
+  it("期間が重複している場合、重複部分は1回のみ計算される（インターバルマージ）", () => {
+    const periods = [
+      { start: new Date("2026-06-01T00:00:00Z"), end: new Date("2026-06-01T02:00:00Z"), value: "asleep" }, // 2時間
+      { start: new Date("2026-06-01T01:00:00Z"), end: new Date("2026-06-01T03:00:00Z"), value: "core" },  // 1時間重なり。01:00-03:00
+      { start: new Date("2026-06-01T01:30:00Z"), end: new Date("2026-06-01T01:45:00Z"), value: "deep" }   // 完全に内包される
+    ];
+    // 全体としては 00:00:00Z から 03:00:00Z までの3時間となるはず
+    expect(calculateTotalHours(periods)).toBe(3.0);
+  });
 });

@@ -56,7 +56,9 @@ function splitDataByTime(data: ParsedHealthData[], cutoff: Date): [number[], num
  * @returns 睡眠メトリクスオブジェクト
  */
 function calculateSleepMetrics(sleepPeriods: ParsedHealthData[], oneDayAgo: Date) {
-  const baselineSleepPeriods = sleepPeriods.filter(item => item.start < oneDayAgo);
+  const baselineSleepPeriods = sleepPeriods.filter(item => 
+    (item.end && item.end < oneDayAgo) || (!item.end && item.start < oneDayAgo)
+  );
   const baselineSleepHoursTotal = calculateTotalHours(baselineSleepPeriods);
   
   const uniqueSleepDays = new Set(baselineSleepPeriods.map(s => {
@@ -66,7 +68,9 @@ function calculateSleepMetrics(sleepPeriods: ParsedHealthData[], oneDayAgo: Date
   const sleepDaysCount = uniqueSleepDays.size > 0 ? uniqueSleepDays.size : 1; 
   const baselineMeanHours = baselineSleepHoursTotal / sleepDaysCount;
 
-  const sleepTodayPeriods = sleepPeriods.filter(item => item.start >= oneDayAgo);
+  const sleepTodayPeriods = sleepPeriods.filter(item => 
+    (item.end && item.end >= oneDayAgo) || (!item.end && item.start >= oneDayAgo)
+  );
   const todayTotal = calculateTotalHours(sleepTodayPeriods);
   const sleepTodayDeepPeriods = sleepTodayPeriods.filter(item => typeof item.value === 'string' && item.value.toLowerCase() === 'deep');
   const sleepTodayDeepTotal = calculateTotalHours(sleepTodayDeepPeriods);
